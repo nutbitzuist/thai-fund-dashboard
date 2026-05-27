@@ -231,7 +231,7 @@ export async function syncAllNavs(
   recentDays = 7,
   newFundDays = 30,
   maxNewFunds = 50 // cap new-fund bootstrap per cron run to stay within timeout
-): Promise<number> {
+): Promise<{ inserted: number; updatedFundIds: number[] }> {
   const endDate = getLastWeekday();
 
   const recentStart = new Date(endDate);
@@ -253,15 +253,18 @@ export async function syncAllNavs(
     }),
   ]);
 
-  let total = 0;
+  let inserted = 0;
+  const updatedFundIds: number[] = [];
 
   // Sync recent NAV for funds that already have data (fast path)
   const existingBatches = chunkArray(fundsWithData, BATCH_SIZE);
   for (const batch of existingBatches) {
-    await Promise.all(
+    const results = await Promise.all(
       batch.map((f) => syncNavForFund(f.id, f.projId, recentStart, endDate))
-    ).then((results) => {
-      total += results.reduce((a, b) => a + b, 0);
+    );
+    results.forEach((count, i) => {
+      inserted += count;
+      if (count > 0) updatedFundIds.push(batch[i].id);
     });
     await sleep(INTER_BATCH_DELAY);
   }
@@ -269,15 +272,17 @@ export async function syncAllNavs(
   // Bootstrap new funds with a short window
   const newBatches = chunkArray(fundsWithoutData, BATCH_SIZE);
   for (const batch of newBatches) {
-    await Promise.all(
+    const results = await Promise.all(
       batch.map((f) => syncNavForFund(f.id, f.projId, newFundStart, endDate))
-    ).then((results) => {
-      total += results.reduce((a, b) => a + b, 0);
+    );
+    results.forEach((count, i) => {
+      inserted += count;
+      if (count > 0) updatedFundIds.push(batch[i].id);
     });
     await sleep(INTER_BATCH_DELAY);
   }
 
-  return total;
+  return { inserted, updatedFundIds };
 }
 
 // ── Calculate Metrics ─────────────────────────
@@ -346,15 +351,29 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
   return calculated;
 }
 
-export async function calculateAllMetrics(): Promise<number> {
-  const funds = await prisma.fund.findMany({ select: { id: true } });
-  let total = 0;
+/**
+ * Recalculate metrics for a specific set of fund IDs (e.g. those updated in the
+ * current sync run). Pass an empty array to recalculate all active funds.
+ */
+export async function calculateAllMetrics(fundIds?: number[]): Promise<number> {
+  let ids: number[];
 
-  const batches = chunkArray(funds, 50);
+  if (fundIds && fundIds.length > 0) {
+    // Targeted: only recalculate funds that got new NAV data this run
+    ids = fundIds;
+  } else {
+    // Full recalc: scope to active funds only (never touch liquidated funds)
+    const funds = await prisma.fund.findMany({
+      where: { fundStatus: { in: ['RG', 'SE'] } },
+      select: { id: true },
+    });
+    ids = funds.map((f) => f.id);
+  }
+
+  let total = 0;
+  const batches = chunkArray(ids, 50);
   for (const batch of batches) {
-    const results = await Promise.all(
-      batch.map((f) => calculateMetricsForFund(f.id))
-    );
+    const results = await Promise.all(batch.map((id) => calculateMetricsForFund(id)));
     total += results.reduce((a, b) => a + b, 0);
   }
 
@@ -443,15 +462,19 @@ export async function runDailySync(): Promise<SyncResult> {
     // - Existing funds: last 7 days only (fast path — most already in DB)
     // - New funds (no classes yet): last 30 days × up to 50 funds per run
     // Historical backfill: run scripts/backfill-navs.ts locally
+    let updatedFundIds: number[] = [];
     try {
-      navInserted = await syncAllNavs(7, 30, 50);
+      const navResult = await syncAllNavs(7, 30, 50);
+      navInserted = navResult.inserted;
+      updatedFundIds = navResult.updatedFundIds;
     } catch (e) {
       errors.push(`NAV sync failed: ${String(e)}`);
     }
 
-    // Step 4: Calculate Metrics
+    // Step 4: Calculate Metrics — only for funds that received new NAV data.
+    // This avoids iterating all 14k+ funds (including liquidated) every run.
     try {
-      metricsCalculated = await calculateAllMetrics();
+      metricsCalculated = await calculateAllMetrics(updatedFundIds);
     } catch (e) {
       errors.push(`Metric calculation failed: ${String(e)}`);
     }

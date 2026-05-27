@@ -8,7 +8,7 @@ import { createErrorResponse } from '@/lib/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // 5 minutes (Vercel Pro limit; Hobby = 60s)
+export const maxDuration = 60; // Vercel Hobby hard limit is 60s; Pro allows 300s
 
 export async function POST(req: NextRequest) {
   // Verify CRON_SECRET — accept from header or Authorization Bearer

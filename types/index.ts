@@ -291,8 +291,22 @@ export const RISK_LEVEL_COLORS: Record<number, string> = {
 };
 
 // ── Fund Type Labels ────────────────────────────
+// Keys match the inferred fund types from lib/utils.ts inferFundType()
+// (SEC API does not provide fund_type directly)
 
 export const FUND_TYPE_LABELS: Record<string, string> = {
+  // Current inferred types (short codes)
+  EQ: 'หุ้น',
+  FI: 'ตราสารหนี้',
+  MM: 'ตลาดเงิน',
+  BA: 'ผสม',
+  RE: 'อสังหาริมทรัพย์',
+  CM: 'สินค้าโภคภัณฑ์',
+  AI: 'ทางเลือก',
+  FIF: 'ต่างประเทศ',
+  SSF: 'SSF (กองทุนออม)',
+  RMF: 'RMF (กองทุนเลี้ยงชีพ)',
+  // Legacy long-form keys (kept for backward compat with old DB data)
   EQUITY: 'หุ้น',
   FIXED_INCOME: 'ตราสารหนี้',
   MIXED: 'ผสม',
@@ -311,8 +325,13 @@ export const DIVIDEND_POLICY_LABELS: Record<string, string> = {
 };
 
 // ── Fund Status Labels ──────────────────────────
+// SEC Thailand fund status codes: RG = active, SE = seeking redemption, LI = liquidated
 
 export const FUND_STATUS_LABELS: Record<string, string> = {
+  RG: 'เปิดขาย',
+  SE: 'อยู่ระหว่างรับซื้อคืน',
+  LI: 'ชำระบัญชีแล้ว',
+  // Legacy codes (kept for old data)
   RDY: 'เปิดขาย',
   LIQ: 'อยู่ระหว่างชำระบัญชี',
   SUS: 'ระงับการขาย',

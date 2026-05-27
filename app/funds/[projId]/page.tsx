@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowLeft, GitCompare, ExternalLink } from 'lucide-react'
+import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock } from 'lucide-react'
 import prisma from '@/lib/db'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +19,16 @@ import {
   METRIC_PERIODS,
   METRIC_TOOLTIPS,
 } from '@/types'
-import { formatNav, formatPct, formatDateTh, getReturnColorClass, cn, PERIOD_LABELS } from '@/lib/utils'
+import {
+  formatNav,
+  formatPct,
+  formatDateTh,
+  getReturnColorClass,
+  cn,
+  PERIOD_LABELS,
+  hasSufficientData,
+  PERIOD_MIN_NAV_COUNT,
+} from '@/lib/utils'
 
 interface Props {
   params: Promise<{ projId: string }>
@@ -47,6 +56,7 @@ async function getFundDetail(projId: string) {
       fundMetrics: {
         where: { period: { in: METRIC_PERIODS } },
         orderBy: { calculatedAt: 'desc' },
+        // include navCount and endDate for data quality checks
       },
       navPrices: {
         orderBy: { navDate: 'desc' },
@@ -75,6 +85,12 @@ export default async function FundDetailPage({ params }: Props) {
   const prevNav = prevNavRecord ? Number(prevNavRecord.lastVal) : null
   const dailyChangePct = latestNav && prevNav ? ((latestNav - prevNav) / prevNav) * 100 : null
 
+  // Data freshness: days since last NAV
+  const daysSinceNav = latestNavRecord
+    ? Math.floor((Date.now() - latestNavRecord.navDate.getTime()) / (1000 * 60 * 60 * 24))
+    : null
+  const isStaleNav = daysSinceNav != null && daysSinceNav > 5
+
   // Deduplicate metrics by period
   const metricsByPeriod: Record<string, typeof fund.fundMetrics[0]> = {}
   for (const m of fund.fundMetrics) {
@@ -82,6 +98,14 @@ export default async function FundDetailPage({ params }: Props) {
       metricsByPeriod[m.period] = m
     }
   }
+
+  // Determine maximum available NAV history
+  const maxNavCount = Math.max(
+    0,
+    ...Object.values(metricsByPeriod).map((m) => m.navCount ?? 0)
+  )
+  // Warn if we have fewer than 1Y of data points (230 trading days)
+  const hasLimitedHistory = maxNavCount < PERIOD_MIN_NAV_COUNT['1Y']
 
   const m1Y = metricsByPeriod['1Y']
 
@@ -103,6 +127,28 @@ export default async function FundDetailPage({ params }: Props) {
         </Link>
       </div>
 
+      {/* Stale NAV Warning */}
+      {isStaleNav && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <Clock className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            ข้อมูล NAV ล่าสุดอยู่เมื่อ <strong>{daysSinceNav} วันที่แล้ว</strong> ({formatDateTh(latestNavRecord!.navDate)})
+            — อาจยังไม่มีข้อมูลวันทำการล่าสุด
+          </span>
+        </div>
+      )}
+
+      {/* Limited History Warning */}
+      {hasLimitedHistory && (
+        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            ระบบมีประวัติ NAV <strong>~{maxNavCount} วันทำการ</strong> ({Math.round(maxNavCount / 22)} เดือน) —
+            ผลตอบแทนระยะยาว (6M, 1Y, 3Y) คำนวณจากข้อมูลเท่าที่มี ซึ่งอาจไม่ครบช่วงเวลา
+          </span>
+        </div>
+      )}
+
       {/* Fund Header */}
       <Card>
         <CardContent className="p-6">
@@ -116,7 +162,7 @@ export default async function FundDetailPage({ params }: Props) {
                 <Badge variant="secondary" className="text-xs">{projId}</Badge>
                 <RiskBadge riskLevel={fund.riskLevel} />
                 {fund.fundStatus && (
-                  <Badge variant={fund.fundStatus === 'RDY' ? 'success' : 'warning'}>
+                  <Badge variant={fund.fundStatus === 'RG' ? 'success' : 'warning'}>
                     {FUND_STATUS_LABELS[fund.fundStatus] ?? fund.fundStatus}
                   </Badge>
                 )}
@@ -147,8 +193,9 @@ export default async function FundDetailPage({ params }: Props) {
                 {formatPct(dailyChangePct)} วันนี้
               </p>
               {latestNavRecord?.navDate && (
-                <p className="text-xs text-slate-400 mt-1">
-                  {formatDateTh(latestNavRecord.navDate)}
+                <p className={cn('text-xs mt-1', isStaleNav ? 'text-amber-600 font-medium' : 'text-slate-400')}>
+                  ข้อมูล ณ {formatDateTh(latestNavRecord.navDate)}
+                  {isStaleNav && ` (${daysSinceNav}d ago)`}
                 </p>
               )}
               {latestNavRecord?.buyPrice && (
@@ -166,22 +213,41 @@ export default async function FundDetailPage({ params }: Props) {
 
       {/* Performance Metrics */}
       <section>
-        <h2 className="text-lg font-bold text-slate-900 mb-4">ผลตอบแทนย้อนหลัง</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-slate-900">ผลตอบแทนย้อนหลัง</h2>
+          {hasLimitedHistory && (
+            <span className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
+              ข้อมูลจำกัด ~{Math.round(maxNavCount / 22)} เดือน
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {METRIC_PERIODS.filter((p) => p !== 'MAX').map((period) => {
             const m = metricsByPeriod[period]
+            const sufficient = hasSufficientData(period, m?.navCount)
+            const periodLabel = PERIOD_LABELS[period] ?? period
             return (
-              <MetricCard
-                key={period}
-                label={period === '1M' ? '1 เดือน' : period === '3M' ? '3 เดือน' : period === '6M' ? '6 เดือน' : period === '1Y' ? '1 ปี' : period === '3Y' ? '3 ปี' : '5 ปี'}
-                value={m?.returnPct != null ? Number(m.returnPct) : null}
-                type="percent"
-                description={METRIC_TOOLTIPS.return.description}
-                size="sm"
-              />
+              <div key={period} className={cn(!sufficient && m && 'opacity-60')}>
+                <MetricCard
+                  label={periodLabel}
+                  value={m?.returnPct != null ? Number(m.returnPct) : null}
+                  type="percent"
+                  description={
+                    !sufficient && m
+                      ? `ข้อมูลไม่ครบช่วง ${periodLabel} (มีแค่ ${m.navCount ?? 0} วัน, ต้องการ ${PERIOD_MIN_NAV_COUNT[period] ?? '-'})`
+                      : METRIC_TOOLTIPS.return.description
+                  }
+                  size="sm"
+                />
+              </div>
             )
           })}
         </div>
+        {hasLimitedHistory && (
+          <p className="text-xs text-slate-400 mt-2">
+            * ผลตอบแทนที่แสดงคำนวณจากระยะเวลาที่มีข้อมูล ไม่ใช่ช่วงเวลาตามชื่อ
+          </p>
+        )}
       </section>
 
       {/* Risk Metrics */}
@@ -192,21 +258,33 @@ export default async function FundDetailPage({ params }: Props) {
             label="ความผันผวน (Volatility)"
             value={m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null}
             type="percent"
-            description={METRIC_TOOLTIPS.volatility.description}
+            description={
+              !hasSufficientData('1Y', m1Y?.navCount)
+                ? `ข้อมูลไม่ครบ 1 ปี (มี ${m1Y?.navCount ?? 0} วัน)`
+                : METRIC_TOOLTIPS.volatility.description
+            }
             positive="down"
           />
           <MetricCard
             label="Max Drawdown"
             value={m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null}
             type="percent"
-            description={METRIC_TOOLTIPS.maxDrawdown.description}
+            description={
+              !hasSufficientData('1Y', m1Y?.navCount)
+                ? `ข้อมูลไม่ครบ 1 ปี (มี ${m1Y?.navCount ?? 0} วัน)`
+                : METRIC_TOOLTIPS.maxDrawdown.description
+            }
             positive="down"
           />
           <MetricCard
             label="Sharpe Ratio"
             value={m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null}
             type="ratio"
-            description={METRIC_TOOLTIPS.sharpe.description}
+            description={
+              !hasSufficientData('1Y', m1Y?.navCount)
+                ? `ข้อมูลไม่ครบ 1 ปี (มี ${m1Y?.navCount ?? 0} วัน)`
+                : METRIC_TOOLTIPS.sharpe.description
+            }
           />
         </div>
       </section>
@@ -235,28 +313,53 @@ export default async function FundDetailPage({ params }: Props) {
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Volatility</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Max Drawdown</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Sharpe</th>
+                    <th className="text-right py-2 px-3 text-slate-500 font-medium hidden sm:table-cell">วันที่มีข้อมูล</th>
                   </tr>
                 </thead>
                 <tbody>
                   {METRIC_PERIODS.filter((p) => p !== 'MAX').map((period) => {
                     const m = metricsByPeriod[period]
                     const periodLabel = PERIOD_LABELS[period] ?? period
+                    const sufficient = hasSufficientData(period, m?.navCount)
                     return (
-                      <PeriodMetricRow
+                      <tr
                         key={period}
-                        period={period}
-                        periodLabel={periodLabel}
-                        returnPct={m?.returnPct != null ? Number(m.returnPct) : null}
-                        volatility={m?.annualizedVolatilityPct != null ? Number(m.annualizedVolatilityPct) : null}
-                        maxDrawdown={m?.maxDrawdownPct != null ? Number(m.maxDrawdownPct) : null}
-                        sharpe={m?.sharpeRatio != null ? Number(m.sharpeRatio) : null}
-                      />
+                        className={cn(
+                          'border-b border-slate-100 last:border-0',
+                          !sufficient && m && 'opacity-60'
+                        )}
+                      >
+                        <td className="py-3 pr-4 text-sm font-medium text-slate-600">
+                          {periodLabel}
+                          {!sufficient && m && (
+                            <span className="ml-1.5 text-xs text-amber-600 font-normal">*</span>
+                          )}
+                        </td>
+                        <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(m?.returnPct != null ? Number(m.returnPct) : null))}>
+                          {m?.returnPct != null ? formatPct(Number(m.returnPct)) : '-'}
+                        </td>
+                        <td className="py-3 text-right text-sm tabular-nums text-slate-600">
+                          {m?.annualizedVolatilityPct != null ? `${Number(m.annualizedVolatilityPct).toFixed(2)}%` : '-'}
+                        </td>
+                        <td className={cn('py-3 text-right text-sm tabular-nums', m?.maxDrawdownPct != null && Number(m.maxDrawdownPct) < -5 ? 'text-red-600' : 'text-slate-600')}>
+                          {m?.maxDrawdownPct != null ? `${Number(m.maxDrawdownPct).toFixed(2)}%` : '-'}
+                        </td>
+                        <td className="py-3 text-right text-sm tabular-nums text-slate-600">
+                          {m?.sharpeRatio != null ? Number(m.sharpeRatio).toFixed(2) : '-'}
+                        </td>
+                        <td className="py-3 text-right text-xs tabular-nums text-slate-400 hidden sm:table-cell">
+                          {m?.navCount != null ? `${m.navCount} วัน` : '-'}
+                        </td>
+                      </tr>
                     )
                   })}
                 </tbody>
               </table>
             </div>
             <p className="text-xs text-slate-400 mt-3">
+              {hasLimitedHistory && (
+                <span className="text-amber-600 mr-2">* ข้อมูลไม่ครบตามช่วงเวลา</span>
+              )}
               คำนวณจาก NAV ของกลุ่ม {defaultClass?.classAbbrName ?? 'default'} ·
               อัตราดอกเบี้ยไร้ความเสี่ยงที่ใช้คำนวณ Sharpe = 1.5% ต่อปี ·
               <Link href="/methodology" className="text-blue-700 hover:underline ml-1">วิธีคำนวณ</Link>

@@ -173,9 +173,9 @@ export function FundSearch({
                         <p className="text-xs text-slate-400 truncate">{fund.amc.nameTh}</p>
                       )}
                     </div>
-                    {fund.fundStatus && fund.fundStatus !== 'RDY' && (
+                    {fund.fundStatus && fund.fundStatus !== 'RG' && (
                       <span className="text-xs bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 shrink-0">
-                        {fund.fundStatus}
+                        {fund.fundStatus === 'SE' ? 'รับซื้อคืน' : fund.fundStatus}
                       </span>
                     )}
                   </div>

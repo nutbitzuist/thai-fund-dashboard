@@ -14,6 +14,8 @@ import {
   getLastWeekday,
   chunkArray,
   sleep,
+  inferFundType,
+  inferRiskLevel,
 } from './utils';
 import { METRIC_PERIODS } from '@/types';
 
@@ -59,29 +61,38 @@ export async function syncFunds(): Promise<number> {
 
     for (const fund of funds) {
       if (!fund.proj_id) continue;
+
+      // SEC FundFactsheet API does not return fund_type or risk_spectrum.
+      // We infer them from the fund name as a best-effort classification.
+      const nameTh = fund.proj_name_th ?? fund.proj_id;
+      const nameEn = fund.proj_name_en ?? null;
+      const investFlag = ((fund as unknown) as Record<string, unknown>).invest_country_flag as string | null ?? null;
+      const inferredType = fund.fund_type ?? inferFundType(nameTh, nameEn, investFlag);
+      const inferredRisk = fund.risk_spectrum ?? inferRiskLevel(inferredType, investFlag);
+
       await prisma.fund.upsert({
         where: { projId: fund.proj_id },
         update: {
           projAbbrName: fund.proj_abbr_name ?? null,
-          nameTh: fund.proj_name_th ?? fund.proj_id,
-          nameEn: fund.proj_name_en ?? null,
+          nameTh,
+          nameEn,
           fundStatus: fund.fund_status ?? null,
           uniqueId: fund.unique_id ?? amc.uniqueId,
           amcId: amc.id,
-          fundType: fund.fund_type ?? null,
-          riskLevel: fund.risk_spectrum ?? null,
+          fundType: inferredType ?? null,
+          riskLevel: inferredRisk ?? null,
           dividendPolicy: fund.dividend_policy ?? null,
         },
         create: {
           projId: fund.proj_id,
           projAbbrName: fund.proj_abbr_name ?? null,
-          nameTh: fund.proj_name_th ?? fund.proj_id,
-          nameEn: fund.proj_name_en ?? null,
+          nameTh,
+          nameEn,
           fundStatus: fund.fund_status ?? null,
           uniqueId: fund.unique_id ?? amc.uniqueId,
           amcId: amc.id,
-          fundType: fund.fund_type ?? null,
-          riskLevel: fund.risk_spectrum ?? null,
+          fundType: inferredType ?? null,
+          riskLevel: inferredRisk ?? null,
           dividendPolicy: fund.dividend_policy ?? null,
         },
       });
@@ -205,24 +216,61 @@ async function markDefaultClass(fundId: number): Promise<void> {
 
 // ── Sync NAV Batch ────────────────────────────
 
-export async function syncAllNavs(daysBack = 365): Promise<number> {
+/**
+ * Daily incremental NAV sync — designed to fit within Vercel's timeout.
+ *
+ * Strategy:
+ * - Funds that ALREADY have NAV data: fetch last `recentDays` days only
+ *   (most dates exist, so this is very fast — typically 0-1 missing days per fund)
+ * - Funds with NO NAV data yet: fetch last `newFundDays` days to bootstrap them
+ *   (limited batch size to avoid timeout)
+ *
+ * For historical backfill run scripts/backfill-navs.ts locally.
+ */
+export async function syncAllNavs(
+  recentDays = 7,
+  newFundDays = 30,
+  maxNewFunds = 50 // cap new-fund bootstrap per cron run to stay within timeout
+): Promise<number> {
   const endDate = getLastWeekday();
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - Math.min(daysBack, MAX_HISTORY_DAYS));
 
-  // SEC uses 'RG' for registered/active funds.
-  // 'LI'=liquidated, 'EX'=expired, 'CA'=cancelled — exclude these.
-  const funds = await prisma.fund.findMany({
-    where: { fundStatus: { in: ['RG', 'SE'] } },
-    select: { id: true, projId: true },
-  });
+  const recentStart = new Date(endDate);
+  recentStart.setDate(recentStart.getDate() - recentDays);
+
+  const newFundStart = new Date(endDate);
+  newFundStart.setDate(newFundStart.getDate() - newFundDays);
+
+  // Separate active funds into those with existing data vs new
+  const [fundsWithData, fundsWithoutData] = await Promise.all([
+    prisma.fund.findMany({
+      where: { fundStatus: { in: ['RG', 'SE'] }, fundClasses: { some: {} } },
+      select: { id: true, projId: true },
+    }),
+    prisma.fund.findMany({
+      where: { fundStatus: { in: ['RG', 'SE'] }, fundClasses: { none: {} } },
+      select: { id: true, projId: true },
+      take: maxNewFunds, // limit new fund bootstrapping per run
+    }),
+  ]);
 
   let total = 0;
-  const batches = chunkArray(funds, BATCH_SIZE);
 
-  for (const batch of batches) {
+  // Sync recent NAV for funds that already have data (fast path)
+  const existingBatches = chunkArray(fundsWithData, BATCH_SIZE);
+  for (const batch of existingBatches) {
     await Promise.all(
-      batch.map((f) => syncNavForFund(f.id, f.projId, startDate, endDate))
+      batch.map((f) => syncNavForFund(f.id, f.projId, recentStart, endDate))
+    ).then((results) => {
+      total += results.reduce((a, b) => a + b, 0);
+    });
+    await sleep(INTER_BATCH_DELAY);
+  }
+
+  // Bootstrap new funds with a short window
+  const newBatches = chunkArray(fundsWithoutData, BATCH_SIZE);
+  for (const batch of newBatches) {
+    await Promise.all(
+      batch.map((f) => syncNavForFund(f.id, f.projId, newFundStart, endDate))
     ).then((results) => {
       total += results.reduce((a, b) => a + b, 0);
     });
@@ -324,6 +372,28 @@ export interface SyncResult {
   errors: string[];
 }
 
+// ── Webhook Alert ────────────────────────────
+
+async function sendSyncAlert(subject: string, body: string): Promise<void> {
+  const webhookUrl = process.env.SYNC_ALERT_WEBHOOK_URL;
+  if (!webhookUrl) return; // alerting is opt-in; no-op if not configured
+
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `🚨 Thai Fund Dashboard — ${subject}\n${body}`,
+        // Discord format (works for Slack too)
+        embeds: undefined,
+      }),
+    });
+  } catch {
+    // Non-critical — don't let alerting break the sync
+    console.error('[sync] Failed to send webhook alert');
+  }
+}
+
 export async function runDailySync(): Promise<SyncResult> {
   const startTime = Date.now();
   const errors: string[] = [];
@@ -356,9 +426,12 @@ export async function runDailySync(): Promise<SyncResult> {
       errors.push(`Fund sync failed: ${String(e)}`);
     }
 
-    // Step 3: Sync NAV (last 400 days to avoid excessive API calls)
+    // Step 3: Incremental NAV sync
+    // - Existing funds: last 7 days only (fast path — most already in DB)
+    // - New funds (no classes yet): last 30 days × up to 50 funds per run
+    // Historical backfill: run scripts/backfill-navs.ts locally
     try {
-      navInserted = await syncAllNavs(400);
+      navInserted = await syncAllNavs(7, 30, 50);
     } catch (e) {
       errors.push(`NAV sync failed: ${String(e)}`);
     }
@@ -371,17 +444,30 @@ export async function runDailySync(): Promise<SyncResult> {
     }
 
     const durationMs = Date.now() - startTime;
-    const status = errors.length === 0 ? 'SUCCESS' : 'PARTIAL';
+    const syncStatus = errors.length === 0 ? 'SUCCESS' : 'PARTIAL';
 
     await prisma.syncLog.update({
       where: { id: syncLog.id },
       data: {
-        status,
+        status: syncStatus,
         message: errors.length ? errors.join('; ') : 'OK',
         recordsProcessed: navInserted + metricsCalculated,
         finishedAt: new Date(),
       },
     });
+
+    // Send alert on partial failure
+    if (errors.length > 0) {
+      await sendSyncAlert(
+        `Partial sync failure (${errors.length} error${errors.length > 1 ? 's' : ''})`,
+        [
+          `Status: ${syncStatus}`,
+          `Duration: ${(durationMs / 1000).toFixed(1)}s`,
+          `AMCs: ${amcsSynced} | Funds: ${fundsSynced} | NAV: ${navInserted} | Metrics: ${metricsCalculated}`,
+          `Errors:\n${errors.map((e) => `• ${e}`).join('\n')}`,
+        ].join('\n')
+      );
+    }
 
     return { amcsSynced, fundsSynced, navInserted, metricsCalculated, durationMs, errors };
   } catch (e) {
@@ -394,6 +480,17 @@ export async function runDailySync(): Promise<SyncResult> {
         finishedAt: new Date(),
       },
     });
+
+    // Alert on complete failure
+    await sendSyncAlert(
+      'Daily sync FAILED',
+      [
+        `Error: ${String(e)}`,
+        `Duration: ${(durationMs / 1000).toFixed(1)}s`,
+        'Check Vercel runtime logs for details.',
+      ].join('\n')
+    );
+
     throw e;
   }
 }

@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
   try {
     const funds = await prisma.fund.findMany({
       where: {
+        fundStatus: { in: ['RG', 'SE'] }, // only active/seeking funds — excludes LI (liquidated)
         OR: [
           { projAbbrName: { contains: q, mode: 'insensitive' } },
           { nameTh: { contains: q, mode: 'insensitive' } },

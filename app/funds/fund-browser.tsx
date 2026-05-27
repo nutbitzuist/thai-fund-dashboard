@@ -1,8 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { Filter, ChevronLeft, ChevronRight, Zap, Trophy, TrendingUp, Shield, AlertTriangle, AlertCircle, RefreshCw } from 'lucide-react'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import {
+  Filter, ChevronLeft, ChevronRight, Zap, Trophy, TrendingUp, Shield,
+  AlertTriangle, AlertCircle, RefreshCw, Download, Link2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -36,17 +39,52 @@ const SCREENER_PRESETS: {
   { id: 'sharpe_high',    label: 'Sharpe Ratio สูงสุด',   Icon: Zap,        sortBy: 'sharpe1Y',      sortDir: 'desc' },
 ]
 
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportToCsv(funds: Fund[]) {
+  const headers = [
+    'รหัสกองทุน', 'ชื่อย่อ', 'ชื่อกองทุน', 'บลจ.', 'ประเภท', 'ความเสี่ยง',
+    'NAV ล่าสุด', 'เปลี่ยนแปลงวันนี้ (%)', 'ผลตอบแทน 1 ปี (%)', 'ผลตอบแทน 3 ปี (%)',
+    'Volatility 1Y (%)', 'Max Drawdown 1Y (%)', 'Sharpe 1Y',
+  ]
+  const rows = funds.map((f) => [
+    f.projId,
+    f.projAbbrName ?? '',
+    `"${f.nameTh.replace(/"/g, '""')}"`,
+    `"${(f.amc?.nameTh ?? '').replace(/"/g, '""')}"`,
+    f.fundType ?? '',
+    f.riskLevel ?? '',
+    f.latestNav ?? '',
+    f.dailyChangePct?.toFixed(4) ?? '',
+    f.return1Y?.toFixed(4) ?? '',
+    f.return3Y?.toFixed(4) ?? '',
+    f.volatility1Y?.toFixed(4) ?? '',
+    f.maxDrawdown1Y?.toFixed(4) ?? '',
+    f.sharpe1Y?.toFixed(4) ?? '',
+  ])
+  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `thai-funds-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function FundBrowser() {
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
 
   const [funds, setFunds] = useState<Fund[]>([])
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 0 })
-  // 'idle' | 'loading' | 'refreshing' | 'error'
   const [status, setStatus] = useState<'idle' | 'loading' | 'refreshing' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [amcs, setAmcs] = useState<Amc[]>([])
   const [activePreset, setActivePreset] = useState<string | null>('return1Y')
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [exportingCsv, setExportingCsv] = useState(false)
 
   const [q, setQ] = useState(searchParams.get('q') ?? '')
   const [amcId, setAmcId] = useState(searchParams.get('amcId') ?? '')
@@ -56,8 +94,21 @@ export function FundBrowser() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>((searchParams.get('sortDir') as 'asc' | 'desc') ?? 'desc')
   const [page, setPage] = useState(parseInt(searchParams.get('page') ?? '1'))
 
-  // Used to abort stale requests when a newer one starts
   const abortRef = useRef<AbortController | null>(null)
+
+  // ── Sync URL with filter state ────────────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (q) params.set('q', q)
+    if (amcId) params.set('amcId', amcId)
+    if (fundType) params.set('fundType', fundType)
+    if (riskLevel) params.set('riskLevel', riskLevel)
+    if (sortBy !== 'return1Y') params.set('sortBy', sortBy)
+    if (sortDir !== 'desc') params.set('sortDir', sortDir)
+    if (page > 1) params.set('page', String(page))
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [q, amcId, fundType, riskLevel, sortBy, sortDir, page, pathname, router])
 
   // Load AMC list once
   useEffect(() => {
@@ -68,13 +119,10 @@ export function FundBrowser() {
   }, [])
 
   const fetchFunds = useCallback(async () => {
-    // Abort any in-flight request
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
-    // Show 'refreshing' (keep current data visible) if we already have data,
-    // 'loading' (show skeleton) only on first load.
     setStatus((s) => (s === 'idle' || s === 'error' ? 'loading' : 'refreshing'))
     setErrorMsg('')
 
@@ -101,7 +149,7 @@ export function FundBrowser() {
       setPagination(data.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 })
       setStatus('idle')
     } catch (err: unknown) {
-      if ((err as { name?: string }).name === 'AbortError') return // ignore cancelled
+      if ((err as { name?: string }).name === 'AbortError') return
       setErrorMsg((err as Error).message || 'ไม่สามารถโหลดข้อมูลได้')
       setStatus('error')
     }
@@ -137,6 +185,37 @@ export function FundBrowser() {
     setSortDir(preset.sortDir)
     setPage(1)
     setActivePreset(preset.id)
+  }
+
+  // ── Copy shareable link ───────────────────────────────────────────────────
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 2000)
+    })
+  }
+
+  // ── Export all matching funds as CSV ──────────────────────────────────────
+  const handleExportCsv = async () => {
+    setExportingCsv(true)
+    try {
+      const params = new URLSearchParams()
+      if (q) params.set('q', q)
+      if (amcId) params.set('amcId', amcId)
+      if (fundType) params.set('fundType', fundType)
+      if (riskLevel) params.set('riskLevel', riskLevel)
+      params.set('sortBy', sortBy)
+      params.set('sortDir', sortDir)
+      params.set('limit', '500') // max export
+
+      const res = await fetch(`/api/funds?${params}`)
+      const data = await res.json()
+      exportToCsv(data.data ?? [])
+    } catch {
+      // silent — user will see no download
+    } finally {
+      setExportingCsv(false)
+    }
   }
 
   const isLoading = status === 'loading'
@@ -185,8 +264,8 @@ export function FundBrowser() {
           onClick={() => setShowFilters((v) => !v)}
           className={cn(showFilters && 'bg-blue-50 border-blue-300 text-blue-700')}
         >
-          <Filter className="h-4 w-4 mr-1.5" />
-          ตัวกรอง
+          <Filter className="h-4 w-4 sm:mr-1.5" />
+          <span className="hidden sm:inline">ตัวกรอง</span>
         </Button>
       </form>
 
@@ -217,13 +296,15 @@ export function FundBrowser() {
                 <SelectTrigger className="h-9"><SelectValue placeholder="ทั้งหมด" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">ทั้งหมด</SelectItem>
-                  <SelectItem value="EQUITY">หุ้น</SelectItem>
-                  <SelectItem value="FIXED_INCOME">ตราสารหนี้</SelectItem>
-                  <SelectItem value="MIXED">ผสม</SelectItem>
-                  <SelectItem value="MONEY_MARKET">ตลาดเงิน</SelectItem>
-                  <SelectItem value="PROPERTY">อสังหาริมทรัพย์</SelectItem>
-                  <SelectItem value="COMMODITY">สินค้าโภคภัณฑ์</SelectItem>
-                  <SelectItem value="FOREIGN">ต่างประเทศ</SelectItem>
+                  <SelectItem value="EQ">หุ้น (EQ)</SelectItem>
+                  <SelectItem value="FI">ตราสารหนี้ (FI)</SelectItem>
+                  <SelectItem value="MM">ตลาดเงิน (MM)</SelectItem>
+                  <SelectItem value="BA">ผสม (BA)</SelectItem>
+                  <SelectItem value="RE">อสังหาริมทรัพย์ (RE)</SelectItem>
+                  <SelectItem value="CM">สินค้าโภคภัณฑ์ (CM)</SelectItem>
+                  <SelectItem value="FIF">กองทุนต่างประเทศ (FIF)</SelectItem>
+                  <SelectItem value="SSF">กองทุน SSF</SelectItem>
+                  <SelectItem value="RMF">กองทุน RMF</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -295,7 +376,7 @@ export function FundBrowser() {
         </div>
       )}
 
-      {/* Results count + loading indicator */}
+      {/* Results count + actions */}
       {!isLoading && !isError && (
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span className="flex items-center gap-2">
@@ -304,11 +385,40 @@ export function FundBrowser() {
               <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" />
             )}
           </span>
-          <span className="text-xs">หน้า {page} จาก {pagination.totalPages}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-400 hidden sm:inline">หน้า {page} จาก {pagination.totalPages}</span>
+            {/* Copy shareable link */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-slate-500 hover:text-slate-900"
+              onClick={handleCopyLink}
+              title="คัดลอกลิงก์"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1.5 text-xs">
+                {copiedLink ? 'คัดลอกแล้ว!' : 'แชร์'}
+              </span>
+            </Button>
+            {/* CSV export */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-slate-500 hover:text-slate-900"
+              onClick={handleExportCsv}
+              disabled={exportingCsv}
+              title="ส่งออก CSV"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1.5 text-xs">
+                {exportingCsv ? 'กำลังส่งออก...' : 'CSV'}
+              </span>
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* Table — show skeleton on first load, keep data visible while refreshing */}
+      {/* Table */}
       <FundTable
         funds={funds}
         sortBy={sortBy}

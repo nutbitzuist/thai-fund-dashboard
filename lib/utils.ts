@@ -209,3 +209,92 @@ export const PERIOD_LABELS: Record<string, string> = {
   YTD: 'ปีนี้ (YTD)',
   MAX: 'ทั้งหมด',
 };
+
+// ── Minimum NAV data points required per period ──
+
+export const PERIOD_MIN_NAV_COUNT: Record<string, number> = {
+  '1M': 18,
+  '3M': 55,
+  '6M': 110,
+  YTD: 18,
+  '1Y': 230,
+  '3Y': 700,
+  '5Y': 1150,
+};
+
+/**
+ * Returns true if there are enough NAV data points to make the period meaningful
+ */
+export function hasSufficientData(period: string, navCount: number | null | undefined): boolean {
+  if (navCount == null) return false;
+  const min = PERIOD_MIN_NAV_COUNT[period];
+  if (!min) return true; // unknown period → allow
+  return navCount >= min;
+}
+
+// ── Fund Type Inference ───────────────────────
+// The SEC FundFactsheet API does NOT return fund_type or risk_spectrum.
+// We infer fund_type from Thai/English fund names using common naming conventions.
+// invest_country_flag: "1" = may invest abroad, "3" = domestic only
+
+export type InferredFundType = 'EQ' | 'FI' | 'MM' | 'BA' | 'RE' | 'CM' | 'FIF' | 'SSF' | 'RMF' | 'AI';
+
+const FUND_TYPE_PATTERNS: Array<{ pattern: RegExp; type: InferredFundType }> = [
+  // Special tax-privileged types first (most specific)
+  { pattern: /\bSSF\b|Super\s+Saving|\bsupersaving\b/i, type: 'SSF' },
+  { pattern: /\bRMF\b|Retirement\s+Mutual|เพื่อการเลี้ยงชีพ/i, type: 'RMF' },
+  // Real estate / REITs
+  { pattern: /REIT|Property|Real\s+Estate|อสังหาริมทรัพย์|กองทรัสต์/i, type: 'RE' },
+  // Commodities
+  { pattern: /Gold|ทองคำ|Commodity|น้ำมัน|Oil|Silver|เงิน/i, type: 'CM' },
+  // Alternative / Infrastructure
+  { pattern: /Infrastructure|โครงสร้างพื้นฐาน|Alternative|ทางเลือก/i, type: 'AI' },
+  // Money market
+  { pattern: /Money\s+Market|ตลาดเงิน|Treasury|พันธบัตร\s*ระยะสั้น/i, type: 'MM' },
+  // Fixed income (bonds)
+  { pattern: /Fixed\s+Income|ตราสารหนี้|Bond|หุ้นกู้|Income\s+Fund/i, type: 'FI' },
+  // Balanced
+  { pattern: /Balanced|ผสม|Mixed|Asset\s+Alloc/i, type: 'BA' },
+  // Foreign investment (FIF)
+  { pattern: /Foreign|Global|International|World|ต่างประเทศ|FIF\b/i, type: 'FIF' },
+  // Equity (catch-all after specifics)
+  { pattern: /Equity|หุ้น|Stock|Dividend|ปันผล|Growth|Value\s+Fund/i, type: 'EQ' },
+];
+
+export function inferFundType(
+  nameTh: string,
+  nameEn: string | null | undefined,
+  investCountryFlag: string | null | undefined
+): InferredFundType | null {
+  const combined = `${nameTh} ${nameEn ?? ''}`;
+  for (const { pattern, type } of FUND_TYPE_PATTERNS) {
+    if (pattern.test(combined)) return type;
+  }
+  // Fallback: if fund invests abroad and no other match, classify as FIF
+  if (investCountryFlag === '1') return 'FIF';
+  return null;
+}
+
+/**
+ * Infer a rough risk level (1-8) from fund type and investment country
+ * This is an approximation — actual risk spectrum requires SEC-provided data
+ */
+export function inferRiskLevel(
+  fundType: InferredFundType | string | null | undefined,
+  investCountryFlag: string | null | undefined
+): number | null {
+  const isAbroad = investCountryFlag === '1';
+  switch (fundType) {
+    case 'MM': return 1;
+    case 'FI': return isAbroad ? 4 : 3;
+    case 'BA': return isAbroad ? 6 : 5;
+    case 'RE': return isAbroad ? 7 : 6;
+    case 'CM': return isAbroad ? 7 : 6;
+    case 'AI': return isAbroad ? 7 : 6;
+    case 'EQ': return isAbroad ? 7 : 6;
+    case 'FIF': return 7;
+    case 'SSF': return 6; // typically equity-based
+    case 'RMF': return 5; // can vary; 5 is a reasonable default
+    default: return null;
+  }
+}

@@ -402,6 +402,19 @@ export async function runDailySync(): Promise<SyncResult> {
   let navInserted = 0;
   let metricsCalculated = 0;
 
+  // Clean up stale RUNNING logs from previous timed-out runs
+  await prisma.syncLog.updateMany({
+    where: {
+      status: 'RUNNING',
+      startedAt: { lt: new Date(Date.now() - 10 * 60 * 1000) }, // older than 10 min
+    },
+    data: {
+      status: 'FAILED',
+      message: 'Timed out (Vercel function limit — no finish recorded)',
+      finishedAt: new Date(),
+    },
+  }).catch(() => {}); // non-critical; ignore errors
+
   // Create sync log entry
   const syncLog = await prisma.syncLog.create({
     data: {

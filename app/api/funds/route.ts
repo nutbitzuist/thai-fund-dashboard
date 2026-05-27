@@ -40,8 +40,14 @@ export async function GET(req: NextRequest) {
 
   const skip = (page - 1) * limit;
 
-  // Build where clause
+  // Build where clause — default to active funds only (RG=Registered, SE=Seeking)
   const where: Record<string, unknown> = {};
+  if (fundStatus) {
+    where.fundStatus = fundStatus;
+  } else {
+    // Omit inactive funds (LI=Liquidated, EX=Expired, CA=Cancelled) by default
+    where.fundStatus = { in: ['RG', 'SE'] };
+  }
   if (q) {
     where.OR = [
       { projAbbrName: { contains: q, mode: 'insensitive' } },
@@ -54,7 +60,6 @@ export async function GET(req: NextRequest) {
   if (fundType) where.fundType = fundType;
   if (riskLevel) where.riskLevel = riskLevel;
   if (dividendPolicy) where.dividendPolicy = dividendPolicy;
-  if (fundStatus) where.fundStatus = fundStatus;
 
   try {
     const [total, funds] = await Promise.all([

@@ -12,7 +12,7 @@ import { formatDateTh } from '@/lib/utils'
 async function getHomeStats() {
   try {
     const [fundCount, lastSync] = await Promise.all([
-      prisma.fund.count({ where: { fundStatus: { not: 'LIQ' } } }),
+      prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] } } }),
       prisma.syncLog.findFirst({
         where: { status: { in: ['SUCCESS', 'PARTIAL'] } },
         orderBy: { finishedAt: 'desc' },

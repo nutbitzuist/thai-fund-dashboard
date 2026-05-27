@@ -66,9 +66,16 @@ export async function syncFunds(): Promise<number> {
       // We infer them from the fund name as a best-effort classification.
       const nameTh = fund.proj_name_th ?? fund.proj_id;
       const nameEn = fund.proj_name_en ?? null;
-      const investFlag = ((fund as unknown) as Record<string, unknown>).invest_country_flag as string | null ?? null;
+      const investFlag = fund.invest_country_flag ?? null;
       const inferredType = fund.fund_type ?? inferFundType(nameTh, nameEn, investFlag);
       const inferredRisk = fund.risk_spectrum ?? inferRiskLevel(inferredType, investFlag);
+
+      // Parse inception date — SEC returns "YYYY-MM-DD" or "-" for unknown
+      const regisDateRaw = fund.regis_date;
+      const regisDate =
+        regisDateRaw && regisDateRaw !== '-' && /^\d{4}-\d{2}-\d{2}$/.test(regisDateRaw)
+          ? new Date(regisDateRaw)
+          : null;
 
       await prisma.fund.upsert({
         where: { projId: fund.proj_id },
@@ -82,6 +89,7 @@ export async function syncFunds(): Promise<number> {
           fundType: inferredType ?? null,
           riskLevel: inferredRisk ?? null,
           dividendPolicy: fund.dividend_policy ?? null,
+          ...(regisDate && { regisDate }),
         },
         create: {
           projId: fund.proj_id,
@@ -94,6 +102,7 @@ export async function syncFunds(): Promise<number> {
           fundType: inferredType ?? null,
           riskLevel: inferredRisk ?? null,
           dividendPolicy: fund.dividend_policy ?? null,
+          regisDate,
         },
       });
       upserted++;
@@ -160,6 +169,9 @@ export async function syncNavForFund(
         await markDefaultClass(fundId);
       }
 
+      const netAsset =
+        item.net_asset != null && item.net_asset > 0 ? item.net_asset : null;
+
       await prisma.navPrice.upsert({
         where: {
           fundClassId_navDate: {
@@ -171,6 +183,7 @@ export async function syncNavForFund(
           lastVal: lastVal,
           buyPrice: item.buy_price ? parseFloat(item.buy_price) : null,
           sellPrice: item.sell_price ? parseFloat(item.sell_price) : null,
+          ...(netAsset !== null && { netAsset }),
         },
         create: {
           fundId,
@@ -179,6 +192,7 @@ export async function syncNavForFund(
           lastVal: lastVal,
           buyPrice: item.buy_price ? parseFloat(item.buy_price) : null,
           sellPrice: item.sell_price ? parseFloat(item.sell_price) : null,
+          netAsset,
         },
       });
       inserted++;

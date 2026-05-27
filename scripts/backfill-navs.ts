@@ -103,6 +103,7 @@ async function fetchDailyNav(
   last_val: string;
   buy_price?: string;
   sell_price?: string;
+  net_asset?: number;
   class_abbr_name: string;
   class_name?: string;
 }>> {
@@ -140,6 +141,7 @@ async function fetchDailyNav(
         last_val: String(r.last_val ?? r.lastVal ?? r.nav ?? '0'),
         buy_price: r.buy_price != null ? String(r.buy_price) : r.buyPrice != null ? String(r.buyPrice) : undefined,
         sell_price: r.sell_price != null ? String(r.sell_price) : r.sellPrice != null ? String(r.sellPrice) : undefined,
+        net_asset: r.net_asset != null ? Number(r.net_asset) : r.netAsset != null ? Number(r.netAsset) : undefined,
         class_abbr_name: (r.class_abbr_name as string) ?? (r.classAbbrName as string) ?? projId,
         class_name: (r.class_name as string) ?? (r.className as string) ?? undefined,
       };
@@ -218,10 +220,11 @@ async function syncFundNavs(
         await markDefaultClass(prisma, fundId);
       }
 
+      const netAsset = item.net_asset != null && item.net_asset > 0 ? item.net_asset : null;
       await prisma.navPrice.upsert({
         where: { fundClassId_navDate: { fundClassId: fundClass.id, navDate: new Date(date) } },
-        update: { lastVal, buyPrice: item.buy_price ? parseFloat(item.buy_price) : null, sellPrice: item.sell_price ? parseFloat(item.sell_price) : null },
-        create: { fundId, fundClassId: fundClass.id, navDate: new Date(date), lastVal, buyPrice: item.buy_price ? parseFloat(item.buy_price) : null, sellPrice: item.sell_price ? parseFloat(item.sell_price) : null },
+        update: { lastVal, buyPrice: item.buy_price ? parseFloat(item.buy_price) : null, sellPrice: item.sell_price ? parseFloat(item.sell_price) : null, ...(netAsset !== null && { netAsset }) },
+        create: { fundId, fundClassId: fundClass.id, navDate: new Date(date), lastVal, buyPrice: item.buy_price ? parseFloat(item.buy_price) : null, sellPrice: item.sell_price ? parseFloat(item.sell_price) : null, netAsset },
       });
       inserted++;
     }

@@ -107,6 +107,21 @@ export function getLastWeekday(date: Date = new Date()): Date {
 // ── Number Formatting ────────────────────────
 
 /**
+ * Format AUM (Assets Under Management) in Thai baht with suffix
+ * e.g. 902100527 → "฿902.1 ล้าน" | 15000000000 → "฿15.0 พันล้าน"
+ */
+export function formatAUM(value: number | null | undefined): string {
+  if (value == null || isNaN(value) || value <= 0) return '-';
+  if (value >= 1_000_000_000) {
+    return `฿${(value / 1_000_000_000).toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} พันล้าน`;
+  }
+  if (value >= 1_000_000) {
+    return `฿${(value / 1_000_000).toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ล้าน`;
+  }
+  return `฿${value.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`;
+}
+
+/**
  * Format number with commas and decimal places
  */
 export function formatNumber(value: number | null | undefined, decimals = 2): string {

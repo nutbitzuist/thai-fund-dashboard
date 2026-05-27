@@ -25,6 +25,7 @@ import {
   formatNav,
   formatPct,
   formatDateTh,
+  formatAUM,
   getReturnColorClass,
   cn,
   PERIOD_LABELS,
@@ -71,7 +72,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         { projId: slug },
       ],
     },
-    select: { nameTh: true, nameEn: true, projAbbrName: true, projId: true, fundType: true, riskLevel: true },
+    select: { nameTh: true, nameEn: true, projAbbrName: true, projId: true, fundType: true, riskLevel: true, regisDate: true },
   })
   if (!fund) return { title: 'ไม่พบกองทุน' }
 
@@ -208,30 +209,74 @@ export default async function FundDetailPage({ params }: Props) {
                 {fund.dividendPolicy && (
                   <span><span className="text-slate-400">นโยบายปันผล:</span> {DIVIDEND_POLICY_LABELS[fund.dividendPolicy] ?? fund.dividendPolicy}</span>
                 )}
+                {fund.regisDate && (() => {
+                  const ageYears = Math.floor((Date.now() - new Date(fund.regisDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+                  return (
+                    <span>
+                      <span className="text-slate-400">จัดตั้ง:</span>{' '}
+                      {formatDateTh(fund.regisDate)}
+                      <span className="text-slate-400 ml-1">({ageYears} ปี)</span>
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 
             {/* NAV Box */}
-            <div className="bg-slate-50 rounded-xl p-4 min-w-[200px] text-right lg:text-center border border-slate-200">
-              <p className="text-xs text-slate-500 mb-1">NAV ล่าสุด</p>
-              <p className="text-3xl font-bold text-slate-900 tabular-nums">
-                {latestNav != null ? formatNav(latestNav) : '-'}
-              </p>
-              <p className={cn('text-sm font-medium mt-1 tabular-nums', getReturnColorClass(dailyChangePct))}>
-                {formatPct(dailyChangePct)} วันนี้
-              </p>
-              {latestNavRecord?.navDate && (
-                <p className={cn('text-xs mt-1', isStaleNav ? 'text-amber-600 font-medium' : 'text-slate-400')}>
-                  ข้อมูล ณ {formatDateTh(latestNavRecord.navDate)}
-                  {isStaleNav && ` (${daysSinceNav}d ago)`}
+            <div className="bg-slate-50 rounded-xl p-4 min-w-[220px] text-right lg:text-center border border-slate-200 space-y-2">
+              {/* NAV + daily change */}
+              <div>
+                <p className="text-xs text-slate-500 mb-1">NAV ล่าสุด</p>
+                <p className="text-3xl font-bold text-slate-900 tabular-nums">
+                  {latestNav != null ? formatNav(latestNav) : '-'}
                 </p>
-              )}
-              {latestNavRecord?.buyPrice && (
-                <div className="flex justify-between text-xs text-slate-500 mt-2 border-t border-slate-200 pt-2">
-                  <span>ซื้อ: {formatNav(Number(latestNavRecord.buyPrice))}</span>
-                  {latestNavRecord.sellPrice && (
-                    <span>ขาย: {formatNav(Number(latestNavRecord.sellPrice))}</span>
-                  )}
+                <p className={cn('text-sm font-medium mt-1 tabular-nums', getReturnColorClass(dailyChangePct))}>
+                  {formatPct(dailyChangePct)} วันนี้
+                </p>
+                {latestNavRecord?.navDate && (
+                  <p className={cn('text-xs mt-1', isStaleNav ? 'text-amber-600 font-medium' : 'text-slate-400')}>
+                    ข้อมูล ณ {formatDateTh(latestNavRecord.navDate)}
+                    {isStaleNav && ` (${daysSinceNav}d ago)`}
+                  </p>
+                )}
+              </div>
+
+              {/* Buy / Sell prices + transaction cost */}
+              {latestNavRecord?.buyPrice && latestNavRecord?.sellPrice && (() => {
+                const buy = Number(latestNavRecord.buyPrice);
+                const sell = Number(latestNavRecord.sellPrice);
+                const spreadPct = latestNav && latestNav > 0
+                  ? Math.abs(sell - buy) / latestNav * 100
+                  : null;
+                return (
+                  <div className="border-t border-slate-200 pt-2 text-xs text-slate-500 space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">ราคาขาย</span>
+                      <span className="tabular-nums font-medium">{formatNav(sell)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">ราคารับซื้อคืน</span>
+                      <span className="tabular-nums font-medium">{formatNav(buy)}</span>
+                    </div>
+                    {spreadPct != null && spreadPct > 0 && (
+                      <div className="flex justify-between border-t border-slate-100 pt-1 mt-1">
+                        <span className="text-slate-400">ค่าใช้จ่าย/รอบ</span>
+                        <span className="tabular-nums text-amber-700 font-medium">
+                          ~{spreadPct.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* AUM */}
+              {latestNavRecord?.netAsset && (
+                <div className="border-t border-slate-200 pt-2 text-xs">
+                  <p className="text-slate-400 mb-0.5">ขนาดกองทุน (AUM)</p>
+                  <p className="font-semibold text-slate-700 tabular-nums">
+                    {formatAUM(Number(latestNavRecord.netAsset))}
+                  </p>
                 </div>
               )}
             </div>

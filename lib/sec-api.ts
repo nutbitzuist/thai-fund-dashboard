@@ -163,6 +163,14 @@ export async function fetchFundsByAmc(uniqueId: string): Promise<SecFundFactshee
         (r.dividend_policy as string) ??
         (r.dividendPolicy as string) ??
         undefined,
+      regis_date:
+        (r.regis_date as string) ??
+        (r.regisDate as string) ??
+        undefined,
+      invest_country_flag:
+        (r.invest_country_flag as string) ??
+        (r.investCountryFlag as string) ??
+        undefined,
     } satisfies SecFundFactsheet;
   });
 }
@@ -202,6 +210,9 @@ export async function fetchDailyNav(
       sell_price:
         r.sell_price != null ? String(r.sell_price) :
         r.sellPrice != null ? String(r.sellPrice) : undefined,
+      net_asset:
+        r.net_asset != null ? Number(r.net_asset) :
+        r.netAsset != null ? Number(r.netAsset) : undefined,
       class_abbr_name:
         (r.class_abbr_name as string) ??
         (r.classAbbrName as string) ??

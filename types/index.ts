@@ -21,6 +21,8 @@ export interface SecFundFactsheet {
   fund_type?: string;
   risk_spectrum?: number;
   dividend_policy?: string;
+  regis_date?: string;     // Fund registration/inception date "YYYY-MM-DD" (or "-")
+  invest_country_flag?: string; // "1"=foreign, "2"=domestic
 }
 
 export interface SecNavItem {
@@ -28,6 +30,7 @@ export interface SecNavItem {
   last_val: string;        // NAV per unit as string
   buy_price?: string;
   sell_price?: string;
+  net_asset?: number;      // Total AUM in THB
   class_abbr_name: string; // fund class identifier
   class_name?: string;
 }

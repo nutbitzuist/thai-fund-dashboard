@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { TrendingUp } from 'lucide-react'
+import { TrendingUp, AlertTriangle } from 'lucide-react'
 
 export function Footer() {
   return (
@@ -16,9 +16,10 @@ export function Footer() {
               แพลตฟอร์มค้นหาข้อมูลกองทุนรวมไทยเพื่อการศึกษา
               ข้อมูลจาก SEC Open API Thailand อัปเดตทุกวันจันทร์–ศุกร์ เวลา 18:30 น.
             </p>
-            <p className="mt-3 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">
-              ⚠️ เว็บไซต์นี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน
-              ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต
+            <p className="flex items-start gap-1.5 mt-3 text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>เว็บไซต์นี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน
+              ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต</span>
             </p>
           </div>
 

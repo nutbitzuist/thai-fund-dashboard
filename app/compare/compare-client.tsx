@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { X, Plus, Share2, Check } from 'lucide-react'
+import { X, Plus, Share2, Check, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -344,9 +344,10 @@ export function CompareClient() {
       )}
 
       {/* Disclaimer */}
-      <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
-        ⚠️ การเปรียบเทียบนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำให้เลือกลงทุนในกองทุนใดกองทุนหนึ่ง
-        ผลตอบแทนในอดีตไม่ได้รับประกันอนาคต กรุณาศึกษาหนังสือชี้ชวนก่อนลงทุน
+      <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+        <span>การเปรียบเทียบนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำให้เลือกลงทุนในกองทุนใดกองทุนหนึ่ง
+        ผลตอบแทนในอดีตไม่ได้รับประกันอนาคต กรุณาศึกษาหนังสือชี้ชวนก่อนลงทุน</span>
       </div>
     </div>
   )

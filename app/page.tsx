@@ -2,7 +2,7 @@
 // Server component: renders fast, no client bundle overhead
 
 import Link from 'next/link'
-import { TrendingUp, Search, BarChart2, BookOpen, Shield, ArrowRight, Clock, Trophy } from 'lucide-react'
+import { TrendingUp, Search, BarChart2, BookOpen, Shield, ArrowRight, Clock, Trophy, AlertTriangle } from 'lucide-react'
 import { FundSearch } from '@/components/fund/fund-search'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -210,8 +210,9 @@ export default async function HomePage() {
             data3M={rankings.data3M}
           />
 
-          <p className="text-xs text-slate-400 mt-4 text-center">
-            ⚠️ อันดับนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต
+          <p className="flex items-start justify-center gap-1.5 text-xs text-slate-400 mt-4 text-center">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-400" />
+            อันดับนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต
           </p>
         </div>
       </section>

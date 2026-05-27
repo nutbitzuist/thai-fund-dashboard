@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, TrendingUp, Activity, TrendingDown, BarChart3 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp, Activity, TrendingDown, BarChart3, Medal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
@@ -211,10 +211,13 @@ export function RankingsClient() {
                     <tr key={row.projId} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3">
                         <span className={cn(
-                          'text-sm font-bold tabular-nums',
-                          row.rank <= 3 ? 'text-blue-700' : 'text-slate-400'
+                          'inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold tabular-nums',
+                          row.rank === 1 && 'bg-amber-100 text-amber-700 ring-1 ring-amber-300',
+                          row.rank === 2 && 'bg-slate-100 text-slate-600 ring-1 ring-slate-300',
+                          row.rank === 3 && 'bg-orange-100 text-orange-700 ring-1 ring-orange-300',
+                          row.rank > 3 && 'text-slate-400'
                         )}>
-                          {row.rank <= 3 ? ['🥇','🥈','🥉'][row.rank-1] : row.rank}
+                          {row.rank}
                         </span>
                       </td>
                       <td className="px-3 py-3">

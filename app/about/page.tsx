@@ -2,7 +2,7 @@
 
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ExternalLink, Heart, Mail } from 'lucide-react'
+import { ExternalLink, Heart, Mail, AlertTriangle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 
 export const metadata: Metadata = {
@@ -34,7 +34,7 @@ export default function AboutPage() {
               <li>กรองและจัดอันดับกองทุนตามเกณฑ์ที่สนใจ</li>
             </ul>
             <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
-              <strong>⚠️ ข้อสำคัญ:</strong> เว็บไซต์นี้ <strong>ไม่ใช่</strong>การให้คำแนะนำการลงทุน
+              <strong className="inline-flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" />ข้อสำคัญ:</strong> เว็บไซต์นี้ <strong>ไม่ใช่</strong>การให้คำแนะนำการลงทุน
               ไม่มีการประเมินความเหมาะสมของนักลงทุน และไม่มีการแนะนำซื้อ-ขายกองทุนใดๆ
               ข้อมูลทั้งหมดเพื่อการศึกษาเท่านั้น
             </div>

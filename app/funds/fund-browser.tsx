@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Filter, ChevronLeft, ChevronRight, Zap } from 'lucide-react'
+import { Filter, ChevronLeft, ChevronRight, Zap, Trophy, TrendingUp, Shield, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -46,11 +46,17 @@ interface Pagination {
 }
 
 // Quick screener presets
-const SCREENER_PRESETS: { id: string; label: string; sortBy: SortKey; sortDir: 'asc' | 'desc' }[] = [
-  { id: 'return1Y', label: '🏆 ผลตอบแทน 1 ปีสูงสุด', sortBy: 'return1Y', sortDir: 'desc' },
-  { id: 'return3Y', label: '📈 ผลตอบแทน 3 ปีสูงสุด', sortBy: 'return3Y', sortDir: 'desc' },
-  { id: 'volatility_low', label: '🛡️ ความผันผวนต่ำสุด', sortBy: 'volatility1Y', sortDir: 'asc' },
-  { id: 'sharpe_high', label: '⚡ Sharpe Ratio สูงสุด', sortBy: 'sharpe1Y', sortDir: 'desc' },
+const SCREENER_PRESETS: {
+  id: string
+  label: string
+  Icon: React.ComponentType<{ className?: string }>
+  sortBy: SortKey
+  sortDir: 'asc' | 'desc'
+}[] = [
+  { id: 'return1Y', label: 'ผลตอบแทน 1 ปีสูงสุด', Icon: Trophy, sortBy: 'return1Y', sortDir: 'desc' },
+  { id: 'return3Y', label: 'ผลตอบแทน 3 ปีสูงสุด', Icon: TrendingUp, sortBy: 'return3Y', sortDir: 'desc' },
+  { id: 'volatility_low', label: 'ความผันผวนต่ำสุด', Icon: Shield, sortBy: 'volatility1Y', sortDir: 'asc' },
+  { id: 'sharpe_high', label: 'Sharpe Ratio สูงสุด', Icon: Zap, sortBy: 'sharpe1Y', sortDir: 'desc' },
 ]
 
 export function FundBrowser() {
@@ -158,12 +164,13 @@ export function FundBrowser() {
               key={preset.id}
               onClick={() => applyPreset(preset)}
               className={cn(
-                'rounded-full px-3 py-1.5 text-sm transition-colors border',
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors border',
                 activePreset === preset.id
                   ? 'bg-blue-700 text-white border-blue-700 shadow-sm'
                   : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700',
               )}
             >
+              <preset.Icon className="h-3.5 w-3.5" />
               {preset.label}
             </button>
           ))}
@@ -335,8 +342,9 @@ export function FundBrowser() {
         </div>
       )}
 
-      <p className="text-xs text-slate-400 text-center pb-4">
-        ⚠️ ข้อมูลนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน
+      <p className="flex items-center justify-center gap-1.5 text-xs text-slate-400 text-center pb-4">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+        ข้อมูลนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน
       </p>
     </div>
   )

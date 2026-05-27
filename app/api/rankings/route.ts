@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
   try {
     // Get funds with metrics, applying fund-level filters
     const fundWhere: Record<string, unknown> = {
-      fundStatus: { not: 'LIQ' },
+      fundStatus: { in: ['RG', 'SE'] },
     };
     if (fundType) fundWhere.fundType = fundType;
     if (riskLevel) fundWhere.riskLevel = riskLevel;

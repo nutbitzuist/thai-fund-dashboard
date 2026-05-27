@@ -210,8 +210,10 @@ export async function syncAllNavs(daysBack = 365): Promise<number> {
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - Math.min(daysBack, MAX_HISTORY_DAYS));
 
+  // SEC uses 'RG' for registered/active funds.
+  // 'LI'=liquidated, 'EX'=expired, 'CA'=cancelled — exclude these.
   const funds = await prisma.fund.findMany({
-    where: { fundStatus: { not: 'LIQ' } },
+    where: { fundStatus: { in: ['RG', 'SE'] } },
     select: { id: true, projId: true },
   });
 

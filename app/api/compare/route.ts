@@ -3,10 +3,22 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getPeriodStartDate } from '@/lib/utils';
+
+type FundWithRelations = Prisma.FundGetPayload<{
+  include: {
+    amc: { select: { nameTh: true } };
+    fundClasses: { where: { isDefault: true } };
+    fundMetrics: {
+      where: { period: { in: ['1M', '3M', '6M', '1Y', '3Y', '5Y'] } };
+      orderBy: { calculatedAt: 'desc' };
+    };
+  };
+}>;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -79,7 +91,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Build fund summaries with metrics
-    const fundSummaries = funds.map((fund) => {
+    const fundSummaries = (funds as FundWithRelations[]).map((fund) => {
       const metricsByPeriod: Record<string, object> = {};
       const seen = new Set<string>();
       for (const m of fund.fundMetrics) {

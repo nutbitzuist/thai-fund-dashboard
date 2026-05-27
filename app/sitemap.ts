@@ -16,15 +16,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/compare`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
   ];
 
-  // Dynamic fund pages
+  // Dynamic fund pages — use projAbbrName as SEO slug (e.g. /funds/K-OIL)
   try {
     const funds = await prisma.fund.findMany({
       where: { fundStatus: { in: ['RG', 'SE'] } },
-      select: { projId: true },
+      select: { projId: true, projAbbrName: true },
     });
 
     const fundPages: MetadataRoute.Sitemap = funds.map((f) => ({
-      url: `${baseUrl}/funds/${encodeURIComponent(f.projId)}`,
+      url: `${baseUrl}/funds/${encodeURIComponent(f.projAbbrName ?? f.projId)}`,
       lastModified: new Date(),
       changeFrequency: 'daily' as const,
       priority: 0.8,

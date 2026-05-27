@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { RiskBadge } from '@/components/metrics/risk-badge'
 import { RANKING_PRESETS, FUND_TYPE_LABELS } from '@/types'
+import { fundUrl } from '@/lib/utils'
 import { cn, formatPct, getReturnColorClass } from '@/lib/utils'
 
 interface RankingRow {
@@ -221,7 +222,7 @@ export function RankingsClient() {
                         </span>
                       </td>
                       <td className="px-3 py-3">
-                        <Link href={`/funds/${row.projId}`} className="block group">
+                        <Link href={fundUrl(row)} className="block group">
                           <span className="text-xs font-mono font-bold text-blue-700">{row.projAbbrName ?? row.projId}</span>
                           <span className="text-sm text-slate-900 line-clamp-1 mt-0.5 group-hover:text-blue-700 transition-colors">
                             {row.nameTh}

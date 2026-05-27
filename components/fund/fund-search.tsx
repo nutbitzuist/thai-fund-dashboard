@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, X, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-import { cn, formatPct, getReturnColorClass } from '@/lib/utils'
+import { cn, formatPct, getReturnColorClass, fundUrl } from '@/lib/utils'
 import { RISK_LEVEL_LABELS } from '@/types'
 
 interface FundResult {
@@ -76,7 +76,7 @@ export function FundSearch({
     if (onSelect) {
       onSelect(fund)
     } else {
-      router.push(`/funds/${fund.projId}`)
+      router.push(fundUrl(fund))
     }
   }
 

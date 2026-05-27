@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronRight } from 'lucide-react'
-import { cn, formatPct, formatNav, getReturnColorClass } from '@/lib/utils'
+import { cn, formatPct, formatNav, getReturnColorClass, fundUrl } from '@/lib/utils'
 import { RiskBadge } from '@/components/metrics/risk-badge'
 import { Badge } from '@/components/ui/badge'
 import { FUND_TYPE_LABELS } from '@/types'
@@ -117,7 +117,7 @@ function LoadingSkeleton() {
 // ── Mobile Card Row ───────────────────────────────────────────────────────────
 function MobileFundCard({ fund }: { fund: FundRow }) {
   return (
-    <Link href={`/funds/${fund.projId}`} className="block px-4 py-3.5 hover:bg-slate-50 transition-colors">
+    <Link href={fundUrl(fund)} className="block px-4 py-3.5 hover:bg-slate-50 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
@@ -241,7 +241,7 @@ export function FundTable({
                 className="hover:bg-slate-50 transition-colors group"
               >
                 <td className="px-4 py-3">
-                  <Link href={`/funds/${fund.projId}`} className="block">
+                  <Link href={fundUrl(fund)} className="block">
                     <span className="text-xs font-mono font-bold text-blue-700 block">
                       {fund.projAbbrName ?? fund.projId}
                     </span>
@@ -290,7 +290,7 @@ export function FundTable({
                 </td>
                 <td className="px-3 py-3">
                   <Link
-                    href={`/funds/${fund.projId}`}
+                    href={fundUrl(fund)}
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-slate-100 block"
                   >
                     <ChevronRight className="h-4 w-4 text-slate-400" />

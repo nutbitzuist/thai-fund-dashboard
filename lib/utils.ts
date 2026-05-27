@@ -197,6 +197,14 @@ export function normalizeSearchQuery(q: string): string {
   return q.trim().toLowerCase().replace(/[^\w\sก-๙]/g, '');
 }
 
+// ── Fund URL helper ──────────────────────────
+// SEO-friendly URLs use projAbbrName (e.g. /funds/K-OIL)
+// Falls back to projId for funds without an abbreviated name
+
+export function fundUrl(fund: { projAbbrName: string | null; projId: string }): string {
+  return `/funds/${encodeURIComponent(fund.projAbbrName ?? fund.projId)}`;
+}
+
 // ── Period Label ─────────────────────────────
 
 export const PERIOD_LABELS: Record<string, string> = {

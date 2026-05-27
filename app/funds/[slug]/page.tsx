@@ -1,7 +1,9 @@
-// app/funds/[projId]/page.tsx — Fund Detail Page
+// app/funds/[slug]/page.tsx — Fund Detail Page
+// URL slug = projAbbrName (e.g. /funds/K-OIL)
+// Falls back to projId for backward-compat with old URLs (/funds/M0145_2549)
 
 import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock } from 'lucide-react'
@@ -10,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { RiskBadge } from '@/components/metrics/risk-badge'
-import { MetricCard, PeriodMetricRow } from '@/components/metrics/metric-card'
+import { MetricCard } from '@/components/metrics/metric-card'
 import { FundCharts } from './fund-charts'
 import {
   FUND_TYPE_LABELS,
@@ -28,35 +30,28 @@ import {
   PERIOD_LABELS,
   hasSufficientData,
   PERIOD_MIN_NAV_COUNT,
+  fundUrl,
 } from '@/lib/utils'
 
 interface Props {
-  params: Promise<{ projId: string }>
+  params: Promise<{ slug: string }>
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { projId } = await params
-  const fund = await prisma.fund.findUnique({
-    where: { projId },
-    select: { nameTh: true, projAbbrName: true },
-  })
-  if (!fund) return { title: 'ไม่พบกองทุน' }
-  return {
-    title: `${fund.projAbbrName ?? projId} — ${fund.nameTh}`,
-    description: `ข้อมูล NAV ผลตอบแทน และความเสี่ยงของกองทุน ${fund.nameTh}`,
-  }
-}
-
-async function getFundDetail(projId: string) {
-  const fund = await prisma.fund.findUnique({
-    where: { projId },
+// Resolve slug → fund row (projAbbrName case-insensitive, then projId fallback)
+async function getFundBySlug(slug: string) {
+  return prisma.fund.findFirst({
+    where: {
+      OR: [
+        { projAbbrName: { equals: slug, mode: 'insensitive' } },
+        { projId: slug }, // backward-compat for old /funds/M0145_2549 links
+      ],
+    },
     include: {
       amc: true,
       fundClasses: { orderBy: { isDefault: 'desc' } },
       fundMetrics: {
         where: { period: { in: METRIC_PERIODS } },
         orderBy: { calculatedAt: 'desc' },
-        // include navCount and endDate for data quality checks
       },
       navPrices: {
         orderBy: { navDate: 'desc' },
@@ -65,51 +60,85 @@ async function getFundDetail(projId: string) {
       },
     },
   })
-  return fund
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
+  const fund = await prisma.fund.findFirst({
+    where: {
+      OR: [
+        { projAbbrName: { equals: slug, mode: 'insensitive' } },
+        { projId: slug },
+      ],
+    },
+    select: { nameTh: true, nameEn: true, projAbbrName: true, projId: true, fundType: true, riskLevel: true },
+  })
+  if (!fund) return { title: 'ไม่พบกองทุน' }
+
+  const abbr = fund.projAbbrName ?? fund.projId
+  const canonicalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app'}/funds/${encodeURIComponent(abbr)}`
+
+  return {
+    title: `${abbr} — ${fund.nameTh}`,
+    description: `ข้อมูล NAV ผลตอบแทน และความเสี่ยงของกองทุน ${fund.nameTh}${fund.nameEn ? ` (${fund.nameEn})` : ''}`,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: `${abbr} — ${fund.nameTh}`,
+      description: `ข้อมูล NAV ผลตอบแทน ความเสี่ยง ของกองทุน ${abbr}`,
+      url: canonicalUrl,
+      type: 'website',
+    },
+  }
 }
 
 export default async function FundDetailPage({ params }: Props) {
-  const { projId } = await params
-  const fund = await getFundDetail(projId)
+  const { slug } = await params
+  const fund = await getFundBySlug(slug)
 
   if (!fund) notFound()
 
+  // Canonical redirect: if accessed by old projId URL and fund has a projAbbrName
+  // e.g. /funds/M0145_2549 → /funds/K-OIL (301 implicit via redirect())
+  if (
+    fund.projAbbrName &&
+    slug !== fund.projAbbrName &&
+    slug.toLowerCase() !== fund.projAbbrName.toLowerCase()
+  ) {
+    redirect(fundUrl(fund))
+  }
+
   const defaultClass = fund.fundClasses.find((c) => c.isDefault) ?? fund.fundClasses[0]
   const latestNavRecord = fund.navPrices.find((n) => n.fundClassId === defaultClass?.id) ?? fund.navPrices[0]
-  const prevNavRecord = fund.navPrices.find((n) =>
-    n.fundClassId === defaultClass?.id &&
-    n.navDate.getTime() !== latestNavRecord?.navDate.getTime()
+  const prevNavRecord = fund.navPrices.find(
+    (n) =>
+      n.fundClassId === defaultClass?.id &&
+      n.navDate.getTime() !== latestNavRecord?.navDate.getTime()
   )
 
   const latestNav = latestNavRecord ? Number(latestNavRecord.lastVal) : null
   const prevNav = prevNavRecord ? Number(prevNavRecord.lastVal) : null
   const dailyChangePct = latestNav && prevNav ? ((latestNav - prevNav) / prevNav) * 100 : null
 
-  // Data freshness: days since last NAV
   const daysSinceNav = latestNavRecord
     ? Math.floor((Date.now() - latestNavRecord.navDate.getTime()) / (1000 * 60 * 60 * 24))
     : null
   const isStaleNav = daysSinceNav != null && daysSinceNav > 5
 
-  // Deduplicate metrics by period
-  const metricsByPeriod: Record<string, typeof fund.fundMetrics[0]> = {}
+  // Deduplicate metrics by period (default class)
+  const metricsByPeriod: Record<string, (typeof fund.fundMetrics)[0]> = {}
   for (const m of fund.fundMetrics) {
     if (m.fundClassId === defaultClass?.id && !metricsByPeriod[m.period]) {
       metricsByPeriod[m.period] = m
     }
   }
 
-  // Determine maximum available NAV history
-  const maxNavCount = Math.max(
-    0,
-    ...Object.values(metricsByPeriod).map((m) => m.navCount ?? 0)
-  )
-  // Warn if we have fewer than 1Y of data points (230 trading days)
+  const maxNavCount = Math.max(0, ...Object.values(metricsByPeriod).map((m) => m.navCount ?? 0))
   const hasLimitedHistory = maxNavCount < PERIOD_MIN_NAV_COUNT['1Y']
 
   const m1Y = metricsByPeriod['1Y']
-
-  const compareUrl = `/compare?funds=${projId}`
+  const compareUrl = `/compare?funds=${fund.projId}`
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
@@ -153,13 +182,12 @@ export default async function FundDetailPage({ params }: Props) {
       <Card>
         <CardContent className="p-6">
           <div className="flex flex-col lg:flex-row lg:items-start gap-6">
-            {/* Fund Name & Info */}
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="text-xs font-mono font-bold bg-blue-50 text-blue-700 rounded px-2 py-0.5">
-                  {fund.projAbbrName ?? projId}
+                  {fund.projAbbrName ?? fund.projId}
                 </span>
-                <Badge variant="secondary" className="text-xs">{projId}</Badge>
+                <Badge variant="secondary" className="text-xs">{fund.projId}</Badge>
                 <RiskBadge riskLevel={fund.riskLevel} />
                 {fund.fundStatus && (
                   <Badge variant={fund.fundStatus === 'RG' ? 'success' : 'warning'}>
@@ -293,7 +321,8 @@ export default async function FundDetailPage({ params }: Props) {
       <section>
         <h2 className="text-lg font-bold text-slate-900 mb-4">กราฟ NAV ย้อนหลัง</h2>
         <Suspense fallback={<div className="h-64 bg-slate-100 animate-pulse rounded-xl" />}>
-          <FundCharts projId={projId} defaultClassId={defaultClass?.id} />
+          {/* Pass actual projId (not slug) — API uses projId for DB lookups */}
+          <FundCharts projId={fund.projId} defaultClassId={defaultClass?.id} />
         </Suspense>
       </section>
 
@@ -374,7 +403,7 @@ export default async function FundDetailPage({ params }: Props) {
         ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต
         กรุณาอ่าน{' '}
         <a
-          href={`https://www.sec.or.th/`}
+          href="https://www.sec.or.th/"
           target="_blank"
           rel="noopener noreferrer"
           className="underline inline-flex items-center gap-0.5"

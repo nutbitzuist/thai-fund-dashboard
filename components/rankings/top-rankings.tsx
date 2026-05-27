@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { TrendingUp, TrendingDown, Minus, ArrowRight, Trophy } from 'lucide-react'
-import { cn, formatPct } from '@/lib/utils'
+import { cn, formatPct, fundUrl } from '@/lib/utils'
 
 export interface RankEntry {
   rank: number
@@ -98,7 +98,7 @@ export function TopRankings({ data1Y, dataYTD, data3M }: TopRankingsProps) {
           {rows.map((entry) => (
             <Link
               key={entry.projId}
-              href={`/funds/${entry.projId}`}
+              href={fundUrl(entry)}
               className="flex items-center gap-3 py-3 px-2 -mx-2 rounded-lg hover:bg-blue-50 transition-colors group"
             >
               <RankBadge rank={entry.rank} />

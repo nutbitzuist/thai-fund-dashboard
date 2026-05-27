@@ -69,7 +69,7 @@ export async function GET(
 
     if (!navPrices.length) return createErrorResponse('NAV_NOT_FOUND', 404);
 
-    const data = navPrices.map((n) => ({
+    const data = navPrices.map((n: { navDate: Date; lastVal: unknown; buyPrice: unknown; sellPrice: unknown }) => ({
       date: n.navDate.toISOString().split('T')[0],
       nav: Number(n.lastVal),
       buyPrice: n.buyPrice != null ? Number(n.buyPrice) : null,

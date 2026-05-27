@@ -3,10 +3,31 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
+
+// Inline type for FundMetric with includes (Prisma 7 compat)
+interface MetricWithRelations {
+  period: string;
+  returnPct: unknown;
+  annualizedVolatilityPct: unknown;
+  maxDrawdownPct: unknown;
+  sharpeRatio: unknown;
+  navCount: number | null;
+  endDate: Date;
+  fund: {
+    projId: string;
+    projAbbrName: string | null;
+    nameTh: string;
+    nameEn: string | null;
+    fundType: string | null;
+    riskLevel: number | null;
+    dividendPolicy: string | null;
+    amc: { nameTh: string } | null;
+  };
+  fundClass: { classAbbrName: string };
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,7 +79,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Get funds with metrics, applying fund-level filters
-    const fundWhere: Prisma.FundWhereInput = {
+    const fundWhere: Record<string, unknown> = {
       fundStatus: { not: 'LIQ' },
     };
     if (fundType) fundWhere.fundType = fundType;
@@ -107,7 +128,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const data = metrics.map((m, idx) => ({
+    const data = (metrics as MetricWithRelations[]).map((m, idx) => ({
       rank: skip + idx + 1,
       projId: m.fund.projId,
       projAbbrName: m.fund.projAbbrName,

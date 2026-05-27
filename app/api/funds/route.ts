@@ -3,7 +3,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -42,7 +41,7 @@ export async function GET(req: NextRequest) {
   const skip = (page - 1) * limit;
 
   // Build where clause
-  const where: Prisma.FundWhereInput = {};
+  const where: Record<string, unknown> = {};
   if (q) {
     where.OR = [
       { projAbbrName: { contains: q, mode: 'insensitive' } },
@@ -145,7 +144,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-function buildOrderBy(sortBy: string, sortDir: 'asc' | 'desc'): Prisma.FundOrderByWithRelationInput {
+function buildOrderBy(sortBy: string, sortDir: 'asc' | 'desc'): Record<string, string> {
   switch (sortBy) {
     case 'nameTh':
       return { nameTh: sortDir };

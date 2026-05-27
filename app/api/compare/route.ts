@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
       if (!navs.length) continue;
 
       const baseNav = Number(navs[0].lastVal);
-      navDataMap[fund.projId] = navs.map((n) => ({
+      navDataMap[fund.projId] = navs.map((n: { navDate: Date; lastVal: unknown }) => ({
         date: n.navDate.toISOString().split('T')[0],
         nav: Number(n.lastVal),
         normalized: baseNav > 0 ? (Number(n.lastVal) / baseNav) * 100 : 100,

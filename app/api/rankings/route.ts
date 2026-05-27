@@ -34,7 +34,7 @@ export const dynamic = 'force-dynamic';
 
 const RankingSchema = z.object({
   metric: z
-    .enum(['return1Y', 'return3Y', 'return6M', 'volatility1Y', 'maxDrawdown1Y', 'sharpe1Y'])
+    .enum(['return1Y', 'return3Y', 'return6M', 'returnYTD', 'volatility1Y', 'maxDrawdown1Y', 'sharpe1Y'])
     .default('return1Y'),
   sort: z.enum(['asc', 'desc']).default('desc'),
   fundType: z.string().max(50).optional(),
@@ -48,6 +48,7 @@ const METRIC_PERIOD_MAP: Record<string, string> = {
   return1Y: '1Y',
   return3Y: '3Y',
   return6M: '6M',
+  returnYTD: 'YTD',
   volatility1Y: '1Y',
   maxDrawdown1Y: '1Y',
   sharpe1Y: '1Y',
@@ -57,6 +58,7 @@ const METRIC_FIELD_MAP: Record<string, string> = {
   return1Y: 'returnPct',
   return3Y: 'returnPct',
   return6M: 'returnPct',
+  returnYTD: 'returnPct',
   volatility1Y: 'annualizedVolatilityPct',
   maxDrawdown1Y: 'maxDrawdownPct',
   sharpe1Y: 'sharpeRatio',

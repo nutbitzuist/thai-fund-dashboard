@@ -1,16 +1,22 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { Filter, ChevronLeft, ChevronRight, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FundTable } from '@/components/fund/fund-table'
-import { FUND_TYPE_LABELS, RISK_LEVEL_LABELS } from '@/types'
+import { RISK_LEVEL_LABELS } from '@/types'
 import { cn } from '@/lib/utils'
 
-type SortKey = 'nameTh' | 'riskLevel' | 'return1Y' | 'return3Y' | 'volatility1Y' | 'maxDrawdown1Y' | 'sharpe1Y' | 'latestNav'
+type SortKey = 'nameTh' | 'riskLevel' | 'amc' | 'fundType' | 'return1Y' | 'return3Y' | 'volatility1Y' | 'maxDrawdown1Y' | 'sharpe1Y' | 'latestNav'
+
+interface Amc {
+  id: number
+  nameTh: string
+  nameEn: string | null
+}
 
 interface Fund {
   projId: string
@@ -39,32 +45,50 @@ interface Pagination {
   totalPages: number
 }
 
+// Quick screener presets
+const SCREENER_PRESETS: { id: string; label: string; sortBy: SortKey; sortDir: 'asc' | 'desc' }[] = [
+  { id: 'return1Y', label: '🏆 ผลตอบแทน 1 ปีสูงสุด', sortBy: 'return1Y', sortDir: 'desc' },
+  { id: 'return3Y', label: '📈 ผลตอบแทน 3 ปีสูงสุด', sortBy: 'return3Y', sortDir: 'desc' },
+  { id: 'volatility_low', label: '🛡️ ความผันผวนต่ำสุด', sortBy: 'volatility1Y', sortDir: 'asc' },
+  { id: 'sharpe_high', label: '⚡ Sharpe Ratio สูงสุด', sortBy: 'sharpe1Y', sortDir: 'desc' },
+]
+
 export function FundBrowser() {
-  const router = useRouter()
   const searchParams = useSearchParams()
 
   const [funds, setFunds] = useState<Fund[]>([])
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 0 })
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
+  const [amcs, setAmcs] = useState<Amc[]>([])
+  const [activePreset, setActivePreset] = useState<string | null>(null)
 
-  // Filter state from URL
+  // Filter state — default fundStatus '' means API filters to RG/SE (active) automatically
   const [q, setQ] = useState(searchParams.get('q') ?? '')
+  const [amcId, setAmcId] = useState(searchParams.get('amcId') ?? '')
   const [fundType, setFundType] = useState(searchParams.get('fundType') ?? '')
   const [riskLevel, setRiskLevel] = useState(searchParams.get('riskLevel') ?? '')
-  const [fundStatus, setFundStatus] = useState(searchParams.get('fundStatus') ?? 'RDY')
   const [sortBy, setSortBy] = useState<SortKey>((searchParams.get('sortBy') as SortKey) ?? 'return1Y')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>((searchParams.get('sortDir') as 'asc' | 'desc') ?? 'desc')
   const [page, setPage] = useState(parseInt(searchParams.get('page') ?? '1'))
+
+  // Load AMC list once on mount
+  useEffect(() => {
+    fetch('/api/amcs')
+      .then((r) => r.json())
+      .then((d) => setAmcs(d.data ?? []))
+      .catch(() => {})
+  }, [])
 
   const fetchFunds = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (q) params.set('q', q)
+      if (amcId) params.set('amcId', amcId)
       if (fundType) params.set('fundType', fundType)
       if (riskLevel) params.set('riskLevel', riskLevel)
-      if (fundStatus) params.set('fundStatus', fundStatus)
+      // No fundStatus param → API defaults to active (RG/SE)
       params.set('sortBy', sortBy)
       params.set('sortDir', sortDir)
       params.set('page', String(page))
@@ -79,7 +103,7 @@ export function FundBrowser() {
     } finally {
       setLoading(false)
     }
-  }, [q, fundType, riskLevel, fundStatus, sortBy, sortDir, page])
+  }, [q, amcId, fundType, riskLevel, sortBy, sortDir, page])
 
   useEffect(() => {
     fetchFunds()
@@ -93,26 +117,59 @@ export function FundBrowser() {
       setSortDir(key === 'volatility1Y' || key === 'maxDrawdown1Y' ? 'asc' : 'desc')
     }
     setPage(1)
+    setActivePreset(null)
   }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setPage(1)
-    fetchFunds()
+    setActivePreset(null)
   }
 
   const handleReset = () => {
     setQ('')
+    setAmcId('')
     setFundType('')
     setRiskLevel('')
-    setFundStatus('RDY')
     setSortBy('return1Y')
     setSortDir('desc')
     setPage(1)
+    setActivePreset(null)
+  }
+
+  const applyPreset = (preset: (typeof SCREENER_PRESETS)[number]) => {
+    setSortBy(preset.sortBy)
+    setSortDir(preset.sortDir)
+    setPage(1)
+    setActivePreset(preset.id)
   }
 
   return (
     <div className="space-y-4">
+      {/* Screener Presets */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-2 text-xs text-slate-500 font-medium">
+          <Zap className="h-3.5 w-3.5 text-amber-500" />
+          คัดกรองด่วน
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SCREENER_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => applyPreset(preset)}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-sm transition-colors border',
+                activePreset === preset.id
+                  ? 'bg-blue-700 text-white border-blue-700 shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700',
+              )}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Search Bar */}
       <form onSubmit={handleSearch} className="flex gap-2">
         <Input
@@ -136,25 +193,52 @@ export function FundBrowser() {
       {/* Filter Panel */}
       {showFilters && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <div>
-              <label className="block text-xs text-slate-500 mb-1.5">ประเภทกองทุน</label>
-              <Select value={fundType} onValueChange={(v) => { setFundType(v === 'all' ? '' : v); setPage(1) }}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {/* AMC */}
+            <div className="col-span-2 sm:col-span-1 lg:col-span-2">
+              <label className="block text-xs text-slate-500 mb-1.5">บริษัทจัดการ (บลจ.)</label>
+              <Select
+                value={amcId || 'all'}
+                onValueChange={(v) => { setAmcId(v === 'all' ? '' : v); setPage(1) }}
+              >
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="ทั้งหมด" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">ทั้งหมด</SelectItem>
-                  {Object.entries(FUND_TYPE_LABELS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  {amcs.map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {a.nameTh}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
+            {/* Fund type */}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1.5">ประเภทกองทุน</label>
+              <Select value={fundType || 'all'} onValueChange={(v) => { setFundType(v === 'all' ? '' : v); setPage(1) }}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="ทั้งหมด" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="EQUITY">หุ้น</SelectItem>
+                  <SelectItem value="FIXED_INCOME">ตราสารหนี้</SelectItem>
+                  <SelectItem value="MIXED">ผสม</SelectItem>
+                  <SelectItem value="MONEY_MARKET">ตลาดเงิน</SelectItem>
+                  <SelectItem value="PROPERTY">อสังหาริมทรัพย์</SelectItem>
+                  <SelectItem value="COMMODITY">สินค้าโภคภัณฑ์</SelectItem>
+                  <SelectItem value="FOREIGN">ต่างประเทศ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Risk level */}
             <div>
               <label className="block text-xs text-slate-500 mb-1.5">ระดับความเสี่ยง</label>
-              <Select value={riskLevel} onValueChange={(v) => { setRiskLevel(v === 'all' ? '' : v); setPage(1) }}>
+              <Select value={riskLevel || 'all'} onValueChange={(v) => { setRiskLevel(v === 'all' ? '' : v); setPage(1) }}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="ทั้งหมด" />
                 </SelectTrigger>
@@ -167,24 +251,10 @@ export function FundBrowser() {
               </Select>
             </div>
 
-            <div>
-              <label className="block text-xs text-slate-500 mb-1.5">สถานะกองทุน</label>
-              <Select value={fundStatus} onValueChange={(v) => { setFundStatus(v === 'all' ? '' : v); setPage(1) }}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="ทั้งหมด" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทั้งหมด</SelectItem>
-                  <SelectItem value="RDY">เปิดขาย</SelectItem>
-                  <SelectItem value="LIQ">ชำระบัญชี</SelectItem>
-                  <SelectItem value="SUS">ระงับการขาย</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
+            {/* Sort by */}
             <div>
               <label className="block text-xs text-slate-500 mb-1.5">เรียงตาม</label>
-              <Select value={sortBy} onValueChange={(v) => { setSortBy(v as SortKey); setPage(1) }}>
+              <Select value={sortBy} onValueChange={(v) => { setSortBy(v as SortKey); setPage(1); setActivePreset(null) }}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
@@ -197,10 +267,13 @@ export function FundBrowser() {
                   <SelectItem value="latestNav">NAV ล่าสุด</SelectItem>
                   <SelectItem value="nameTh">ชื่อกองทุน</SelectItem>
                   <SelectItem value="riskLevel">ระดับความเสี่ยง</SelectItem>
+                  <SelectItem value="amc">บลจ.</SelectItem>
+                  <SelectItem value="fundType">ประเภทกองทุน</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
+            {/* Sort direction */}
             <div>
               <label className="block text-xs text-slate-500 mb-1.5">ทิศทาง</label>
               <Select value={sortDir} onValueChange={(v) => { setSortDir(v as 'asc' | 'desc'); setPage(1) }}>
@@ -262,7 +335,6 @@ export function FundBrowser() {
         </div>
       )}
 
-      {/* Disclaimer */}
       <p className="text-xs text-slate-400 text-center pb-4">
         ⚠️ ข้อมูลนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน
       </p>

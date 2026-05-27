@@ -35,6 +35,8 @@ type SortKey =
   | 'maxDrawdown1Y'
   | 'sharpe1Y'
   | 'latestNav'
+  | 'amc'
+  | 'fundType'
 
 interface FundTableProps {
   funds: FundRow[]

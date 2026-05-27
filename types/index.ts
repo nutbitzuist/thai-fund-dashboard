@@ -101,9 +101,9 @@ export interface FundMetricDto {
 
 export type FundMetricsByPeriod = Partial<Record<MetricPeriod, FundMetricDto>>;
 
-export type MetricPeriod = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX';
+export type MetricPeriod = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'YTD' | 'MAX';
 
-export const METRIC_PERIODS: MetricPeriod[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX'];
+export const METRIC_PERIODS: MetricPeriod[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'YTD', 'MAX'];
 
 // ── Search & Filter Types ───────────────────────
 
@@ -123,12 +123,14 @@ export interface FundSearchParams {
 export type FundSortKey =
   | 'return1Y'
   | 'return3Y'
-  | 'volatility'
-  | 'maxDrawdown'
-  | 'sharpe'
+  | 'volatility1Y'
+  | 'maxDrawdown1Y'
+  | 'sharpe1Y'
   | 'latestNav'
   | 'nameTh'
-  | 'riskLevel';
+  | 'riskLevel'
+  | 'amc'
+  | 'fundType';
 
 // ── Chart Data Types ────────────────────────────
 
@@ -163,6 +165,7 @@ export type RankingMetric =
   | 'return1Y'
   | 'return3Y'
   | 'return6M'
+  | 'returnYTD'
   | 'volatility1Y'
   | 'maxDrawdown1Y'
   | 'sharpe1Y';
@@ -186,18 +189,18 @@ export const RANKING_PRESETS: RankingPreset[] = [
     description: 'กองทุนที่มีผลตอบแทนย้อนหลัง 1 ปีสูงที่สุด',
   },
   {
+    id: 'returnYTD_high',
+    label: 'ผลตอบแทน YTD สูงสุด',
+    metric: 'returnYTD',
+    sort: 'desc',
+    description: 'กองทุนที่มีผลตอบแทนตั้งแต่ต้นปีสูงที่สุด',
+  },
+  {
     id: 'volatility_low',
     label: 'ความผันผวนต่ำ',
     metric: 'volatility1Y',
     sort: 'asc',
     description: 'กองทุนที่มีความผันผวนของผลตอบแทนต่ำที่สุดใน 1 ปี',
-  },
-  {
-    id: 'drawdown_low',
-    label: 'Drawdown ต่ำ',
-    metric: 'maxDrawdown1Y',
-    sort: 'desc',
-    description: 'กองทุนที่มี Max Drawdown ต่ำที่สุด (ลดลงน้อยที่สุดจากจุดสูงสุด)',
   },
   {
     id: 'sharpe_high',

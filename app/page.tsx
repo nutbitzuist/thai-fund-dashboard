@@ -2,10 +2,11 @@
 // Server component: renders fast, no client bundle overhead
 
 import Link from 'next/link'
-import { TrendingUp, Search, BarChart2, BookOpen, Shield, ArrowRight, Clock } from 'lucide-react'
+import { TrendingUp, Search, BarChart2, BookOpen, Shield, ArrowRight, Clock, Trophy } from 'lucide-react'
 import { FundSearch } from '@/components/fund/fund-search'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { TopRankings, type RankEntry } from '@/components/rankings/top-rankings'
 import prisma from '@/lib/db'
 import { formatDateTh } from '@/lib/utils'
 
@@ -22,6 +23,76 @@ async function getHomeStats() {
     return { fundCount, lastSync: lastSync?.finishedAt ?? null }
   } catch {
     return { fundCount: 0, lastSync: null }
+  }
+}
+
+// Inline type for metric query result (Prisma 7 compat)
+interface MetricRow {
+  period: string
+  returnPct: unknown
+  fund: {
+    projId: string
+    projAbbrName: string | null
+    nameTh: string
+    amc: { nameTh: string } | null
+  }
+}
+
+async function getTopRankings(): Promise<{ data1Y: RankEntry[]; dataYTD: RankEntry[]; data3M: RankEntry[] }> {
+  const fundWhere = { fundStatus: { in: ['RG', 'SE'] } }
+  const baseQuery = {
+    fundClass: { isDefault: true },
+    returnPct: { not: null },
+    fund: fundWhere,
+  }
+  const select = {
+    period: true,
+    returnPct: true,
+    fund: {
+      select: {
+        projId: true,
+        projAbbrName: true,
+        nameTh: true,
+        amc: { select: { nameTh: true } },
+      },
+    },
+  }
+
+  try {
+    const [rows1Y, rowsYTD, rows3M] = await Promise.all([
+      prisma.fundMetric.findMany({
+        where: { ...baseQuery, period: '1Y' },
+        orderBy: { returnPct: 'desc' },
+        take: 5,
+        select,
+      }),
+      prisma.fundMetric.findMany({
+        where: { ...baseQuery, period: 'YTD' },
+        orderBy: { returnPct: 'desc' },
+        take: 5,
+        select,
+      }),
+      prisma.fundMetric.findMany({
+        where: { ...baseQuery, period: '3M' },
+        orderBy: { returnPct: 'desc' },
+        take: 5,
+        select,
+      }),
+    ])
+
+    const toEntries = (rows: MetricRow[]): RankEntry[] =>
+      rows.map((r, i) => ({
+        rank: i + 1,
+        projId: r.fund.projId,
+        projAbbrName: r.fund.projAbbrName,
+        nameTh: r.fund.nameTh,
+        amc: r.fund.amc,
+        returnPct: r.returnPct != null ? Number(r.returnPct) : null,
+      }))
+
+    return { data1Y: toEntries(rows1Y as MetricRow[]), dataYTD: toEntries(rowsYTD as MetricRow[]), data3M: toEntries(rows3M as MetricRow[]) }
+  } catch {
+    return { data1Y: [], dataYTD: [], data3M: [] }
   }
 }
 
@@ -61,14 +132,16 @@ const RISK_EXPLAINERS = [
 ]
 
 export default async function HomePage() {
-  const { fundCount, lastSync } = await getHomeStats()
+  const [{ fundCount, lastSync }, rankings] = await Promise.all([
+    getHomeStats(),
+    getTopRankings(),
+  ])
 
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
       <section className="bg-gradient-to-b from-blue-700 to-blue-900 text-white">
         <div className="mx-auto max-w-4xl px-4 py-16 sm:py-24 sm:px-6 lg:px-8 text-center">
-          {/* Last update badge */}
           {lastSync && (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs mb-6 border border-white/20">
               <Clock className="h-3.5 w-3.5" />
@@ -86,7 +159,6 @@ export default async function HomePage() {
             {fundCount > 0 && ` จากกองทุนกว่า ${fundCount.toLocaleString('th-TH')} กองทุน`}
           </p>
 
-          {/* Search Box */}
           <div className="max-w-2xl mx-auto">
             <FundSearch
               size="lg"
@@ -95,7 +167,6 @@ export default async function HomePage() {
             />
           </div>
 
-          {/* Popular chips */}
           <div className="flex flex-wrap justify-center gap-2 mt-4">
             {POPULAR_FUNDS.map((f) => (
               <Link
@@ -110,8 +181,43 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Features Section */}
+      {/* ── TOP RANKINGS SECTION ───────────────────────────────────── */}
       <section className="bg-white border-b border-slate-200">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Trophy className="h-5 w-5 text-amber-500" />
+                <span className="text-sm font-semibold text-amber-600 uppercase tracking-wide">
+                  กองทุนยอดเยี่ยม
+                </span>
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">อันดับผลตอบแทนสูงสุด</h2>
+              <p className="text-slate-500 text-sm mt-1">
+                จัดอันดับตามผลตอบแทนจากข้อมูล NAV จริงของ ก.ล.ต.
+              </p>
+            </div>
+            <Link href="/rankings">
+              <Button variant="outline" className="shrink-0">
+                ดูอันดับทั้งหมด <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
+          </div>
+
+          <TopRankings
+            data1Y={rankings.data1Y}
+            dataYTD={rankings.dataYTD}
+            data3M={rankings.data3M}
+          />
+
+          <p className="text-xs text-slate-400 mt-4 text-center">
+            ⚠️ อันดับนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต
+          </p>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="bg-slate-50 border-b border-slate-200">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
@@ -186,10 +292,7 @@ export default async function HomePage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {RISK_EXPLAINERS.map((r) => (
-            <div
-              key={r.level}
-              className={`rounded-xl border p-4 ${r.color}`}
-            >
+            <div key={r.level} className={`rounded-xl border p-4 ${r.color}`}>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-lg font-bold">{r.level}</span>
                 <span className="font-semibold">{r.label}</span>

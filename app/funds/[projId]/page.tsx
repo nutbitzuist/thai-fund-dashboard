@@ -19,7 +19,7 @@ import {
   METRIC_PERIODS,
   METRIC_TOOLTIPS,
 } from '@/types'
-import { formatNav, formatPct, formatDateTh, getReturnColorClass, cn } from '@/lib/utils'
+import { formatNav, formatPct, formatDateTh, getReturnColorClass, cn, PERIOD_LABELS } from '@/lib/utils'
 
 interface Props {
   params: Promise<{ projId: string }>
@@ -240,7 +240,7 @@ export default async function FundDetailPage({ params }: Props) {
                 <tbody>
                   {METRIC_PERIODS.filter((p) => p !== 'MAX').map((period) => {
                     const m = metricsByPeriod[period]
-                    const periodLabel = { '1M': '1 เดือน', '3M': '3 เดือน', '6M': '6 เดือน', '1Y': '1 ปี', '3Y': '3 ปี', '5Y': '5 ปี' }[period] ?? period
+                    const periodLabel = PERIOD_LABELS[period] ?? period
                     return (
                       <PeriodMetricRow
                         key={period}

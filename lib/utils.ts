@@ -82,6 +82,10 @@ export function getPeriodStartDate(period: string, endDate: Date): Date {
     case '5Y':
       start.setFullYear(start.getFullYear() - 5);
       break;
+    case 'YTD':
+      // Year-to-date: January 1 of the current year
+      start.setMonth(0, 1);
+      break;
     default:
       start.setFullYear(start.getFullYear() - 10);
   }
@@ -202,5 +206,6 @@ export const PERIOD_LABELS: Record<string, string> = {
   '1Y': '1 ปี',
   '3Y': '3 ปี',
   '5Y': '5 ปี',
+  YTD: 'ปีนี้ (YTD)',
   MAX: 'ทั้งหมด',
 };

@@ -1,5 +1,16 @@
 // app/api/funds/route.ts
 // GET /api/funds — paginated fund list with filters and sorting
+//
+// Sort strategy:
+//  • Direct sorts (nameTh, riskLevel, amc, fundType, latestNav):
+//      Single Fund query with orderBy
+//  • Metric sorts (return1Y, return3Y, volatility1Y, maxDrawdown1Y, sharpe1Y):
+//      TWO-STEP — (1) FundMetric query returns ordered fundIds,
+//                 (2) Fund + metric detail query for those IDs.
+//      This avoids a circular Prisma include (FundMetric→Fund→fundMetrics→FundMetric).
+//
+// Caching: responses are cached 60 s at the CDN edge, stale-while-revalidate 5 min.
+// Financial data changes once daily — aggressive caching is correct here.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -10,25 +21,24 @@ import { checkRateLimit } from '@/lib/rate-limit';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// ── Cache headers ─────────────────────────────────────────────────────────────
+// s-maxage: CDN caches for 60 s (Vercel Edge Cache serves instantly)
+// stale-while-revalidate: CDN keeps serving stale for 5 min while refreshing
+const CACHE = 'public, s-maxage=60, stale-while-revalidate=300';
+
+// ── Metric sort config ────────────────────────────────────────────────────────
 const METRIC_SORT_KEYS = ['return1Y', 'return3Y', 'volatility1Y', 'maxDrawdown1Y', 'sharpe1Y'] as const;
 type MetricSortKey = (typeof METRIC_SORT_KEYS)[number];
 
 const METRIC_PERIOD_MAP: Record<MetricSortKey, string> = {
-  return1Y: '1Y',
-  return3Y: '3Y',
-  volatility1Y: '1Y',
-  maxDrawdown1Y: '1Y',
-  sharpe1Y: '1Y',
+  return1Y: '1Y', return3Y: '3Y', volatility1Y: '1Y', maxDrawdown1Y: '1Y', sharpe1Y: '1Y',
 };
-
 const METRIC_FIELD_MAP: Record<MetricSortKey, string> = {
-  return1Y: 'returnPct',
-  return3Y: 'returnPct',
-  volatility1Y: 'annualizedVolatilityPct',
-  maxDrawdown1Y: 'maxDrawdownPct',
-  sharpe1Y: 'sharpeRatio',
+  return1Y: 'returnPct', return3Y: 'returnPct',
+  volatility1Y: 'annualizedVolatilityPct', maxDrawdown1Y: 'maxDrawdownPct', sharpe1Y: 'sharpeRatio',
 };
 
+// ── Validation ────────────────────────────────────────────────────────────────
 const FundListSchema = z.object({
   q: z.string().max(100).optional(),
   amcId: z.coerce.number().int().positive().optional(),
@@ -37,7 +47,8 @@ const FundListSchema = z.object({
   dividendPolicy: z.string().max(20).optional(),
   fundStatus: z.string().max(10).optional(),
   sortBy: z
-    .enum(['return1Y', 'return3Y', 'volatility1Y', 'maxDrawdown1Y', 'sharpe1Y', 'latestNav', 'nameTh', 'riskLevel', 'amc', 'fundType'])
+    .enum(['return1Y', 'return3Y', 'volatility1Y', 'maxDrawdown1Y', 'sharpe1Y',
+           'latestNav', 'nameTh', 'riskLevel', 'amc', 'fundType'])
     .optional()
     .default('nameTh'),
   sortDir: z.enum(['asc', 'desc']).optional().default('asc'),
@@ -45,8 +56,8 @@ const FundListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
-// Shared fund select shape
-const FUND_SELECT = {
+// ── Shared fund select (basic fields + latest 2 NAVs for daily-change calc) ───
+const FUND_BASE_SELECT = {
   id: true,
   projId: true,
   projAbbrName: true,
@@ -64,8 +75,8 @@ const FUND_SELECT = {
   },
 } as const;
 
-// Format raw fund DB row into FundSummaryDto shape (no metrics yet)
-function formatFundBase(f: {
+// ── Shape helper ──────────────────────────────────────────────────────────────
+type FundBaseRow = {
   id: number;
   projId: string;
   projAbbrName: string | null;
@@ -77,7 +88,22 @@ function formatFundBase(f: {
   dividendPolicy: string | null;
   amc: { id: number; nameTh: string; nameEn: string | null } | null;
   navPrices: { navDate: Date; lastVal: unknown }[];
-}) {
+};
+
+type MetricRow = {
+  fundId: number;
+  period: string;
+  returnPct: unknown;
+  annualizedVolatilityPct: unknown;
+  maxDrawdownPct: unknown;
+  sharpeRatio: unknown;
+};
+
+function buildFundDto(
+  f: FundBaseRow,
+  m1Y: MetricRow | undefined,
+  m3Y: MetricRow | undefined,
+) {
   const latestNav = f.navPrices[0];
   const prevNav = f.navPrices[1];
   const dailyChangePct =
@@ -97,32 +123,31 @@ function formatFundBase(f: {
     dividendPolicy: f.dividendPolicy,
     amc: f.amc,
     latestNav: latestNav ? Number(latestNav.lastVal) : null,
-    latestNavDate: latestNav ? latestNav.navDate.toISOString().split('T')[0] : null,
+    latestNavDate: latestNav ? (latestNav.navDate as Date).toISOString().split('T')[0] : null,
     dailyChangePct,
+    return1Y: m1Y?.returnPct != null ? Number(m1Y.returnPct) : null,
+    return3Y: m3Y?.returnPct != null ? Number(m3Y.returnPct) : null,
+    volatility1Y: m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
+    maxDrawdown1Y: m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
+    sharpe1Y: m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
   };
 }
 
+// ── Route handler ─────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
   const { allowed } = checkRateLimit(`funds:${ip}`, { maxRequests: 120, windowMs: 60_000 });
   if (!allowed) return createErrorResponse('SEC_RATE_LIMIT', 429);
 
-  const params = Object.fromEntries(req.nextUrl.searchParams);
-  const parsed = FundListSchema.safeParse(params);
+  const parsed = FundListSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) return createErrorResponse('VALIDATION_ERROR', 400);
 
-  const { q, amcId, fundType, riskLevel, dividendPolicy, fundStatus, sortBy, sortDir, page, limit } =
-    parsed.data;
-
+  const { q, amcId, fundType, riskLevel, dividendPolicy, fundStatus, sortBy, sortDir, page, limit } = parsed.data;
   const skip = (page - 1) * limit;
 
-  // Build where clause — default to active funds only (RG=Registered, SE=Seeking)
+  // Build fund-level where clause
   const where: Record<string, unknown> = {};
-  if (fundStatus) {
-    where.fundStatus = fundStatus;
-  } else {
-    where.fundStatus = { in: ['RG', 'SE'] };
-  }
+  where.fundStatus = fundStatus ? fundStatus : { in: ['RG', 'SE'] };
   if (q) {
     where.OR = [
       { projAbbrName: { contains: q, mode: 'insensitive' } },
@@ -137,11 +162,10 @@ export async function GET(req: NextRequest) {
   if (dividendPolicy) where.dividendPolicy = dividendPolicy;
 
   try {
-    // ── Metric-based sorts: query via FundMetric table ──────────────────
+    // ── PATH A: Metric sort — two-step to avoid circular Prisma include ──────
     if (METRIC_SORT_KEYS.includes(sortBy as MetricSortKey)) {
-      const metricKey = sortBy as MetricSortKey;
-      const period = METRIC_PERIOD_MAP[metricKey];
-      const field = METRIC_FIELD_MAP[metricKey];
+      const period = METRIC_PERIOD_MAP[sortBy as MetricSortKey];
+      const field = METRIC_FIELD_MAP[sortBy as MetricSortKey];
 
       const metricWhere = {
         period,
@@ -150,59 +174,75 @@ export async function GET(req: NextRequest) {
         fund: where,
       };
 
-      const [total, metrics] = await Promise.all([
+      // Step 1: count total + get ordered fundIds (no fund data yet)
+      const [total, sortedRows] = await Promise.all([
         prisma.fundMetric.count({ where: metricWhere }),
         prisma.fundMetric.findMany({
           where: metricWhere,
           orderBy: { [field]: sortDir },
           skip,
           take: limit,
-          include: {
-            fund: {
-              select: {
-                ...FUND_SELECT,
-                fundMetrics: {
-                  where: { period: { in: ['1Y', '3Y'] } },
-                  orderBy: { calculatedAt: 'desc' as const },
-                  take: 4,
-                  select: {
-                    period: true,
-                    returnPct: true,
-                    annualizedVolatilityPct: true,
-                    maxDrawdownPct: true,
-                    sharpeRatio: true,
-                    endDate: true,
-                  },
-                },
-              },
-            },
+          select: { fundId: true },
+        }),
+      ]);
+
+      const fundIds = sortedRows.map((r) => r.fundId);
+
+      if (!fundIds.length) {
+        return NextResponse.json(
+          { data: [], pagination: { page, limit, total: 0, totalPages: 0 } },
+          { headers: { 'Cache-Control': CACHE } },
+        );
+      }
+
+      // Step 2: fund details + 1Y & 3Y metrics for those IDs (parallel)
+      const [funds, allMetrics] = await Promise.all([
+        prisma.fund.findMany({
+          where: { id: { in: fundIds } },
+          select: FUND_BASE_SELECT,
+        }),
+        prisma.fundMetric.findMany({
+          where: {
+            fundId: { in: fundIds },
+            period: { in: ['1Y', '3Y'] },
+            fundClass: { isDefault: true },
+          },
+          select: {
+            fundId: true,
+            period: true,
+            returnPct: true,
+            annualizedVolatilityPct: true,
+            maxDrawdownPct: true,
+            sharpeRatio: true,
           },
         }),
       ]);
 
-      const fundList = metrics.map((m) => {
-        const f = m.fund as typeof m.fund & {
-          fundMetrics: { period: string; returnPct: unknown; annualizedVolatilityPct: unknown; maxDrawdownPct: unknown; sharpeRatio: unknown; endDate: Date }[];
-        };
-        const m1Y = f.fundMetrics.find((x) => x.period === '1Y');
-        const m3Y = f.fundMetrics.find((x) => x.period === '3Y');
-        return {
-          ...formatFundBase(f),
-          return1Y: m1Y?.returnPct != null ? Number(m1Y.returnPct) : null,
-          return3Y: m3Y?.returnPct != null ? Number(m3Y.returnPct) : null,
-          volatility1Y: m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
-          maxDrawdown1Y: m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
-          sharpe1Y: m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
-        };
-      });
+      // Build lookup maps
+      const fundMap = new Map((funds as FundBaseRow[]).map((f) => [f.id, f]));
+      const metricMap = new Map<number, Record<string, MetricRow>>();
+      for (const m of allMetrics as MetricRow[]) {
+        if (!metricMap.has(m.fundId)) metricMap.set(m.fundId, {});
+        metricMap.get(m.fundId)![m.period] = m;
+      }
 
-      return NextResponse.json({
-        data: fundList,
-        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-      });
+      // Rebuild in sort order
+      const fundList = fundIds
+        .map((id) => {
+          const f = fundMap.get(id);
+          if (!f) return null;
+          const fm = metricMap.get(id) ?? {};
+          return buildFundDto(f, fm['1Y'], fm['3Y']);
+        })
+        .filter(Boolean);
+
+      return NextResponse.json(
+        { data: fundList, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } },
+        { headers: { 'Cache-Control': CACHE } },
+      );
     }
 
-    // ── Direct fund sorts ────────────────────────────────────────────────
+    // ── PATH B: Direct sort on Fund table ─────────────────────────────────────
     const [total, funds] = await Promise.all([
       prisma.fund.count({ where }),
       prisma.fund.findMany({
@@ -211,9 +251,9 @@ export async function GET(req: NextRequest) {
         take: limit,
         orderBy: buildDirectOrderBy(sortBy, sortDir),
         select: {
-          ...FUND_SELECT,
+          ...FUND_BASE_SELECT,
           fundMetrics: {
-            where: { period: { in: ['1Y', '3Y'] } },
+            where: { period: { in: ['1Y', '3Y'] }, fundClass: { isDefault: true } },
             orderBy: { calculatedAt: 'desc' as const },
             take: 4,
             select: {
@@ -222,30 +262,22 @@ export async function GET(req: NextRequest) {
               annualizedVolatilityPct: true,
               maxDrawdownPct: true,
               sharpeRatio: true,
-              endDate: true,
             },
           },
         },
       }),
     ]);
 
-    const fundList = funds.map((f) => {
+    const fundList = (funds as (FundBaseRow & { fundMetrics: MetricRow[] })[]).map((f) => {
       const m1Y = f.fundMetrics.find((m) => m.period === '1Y');
       const m3Y = f.fundMetrics.find((m) => m.period === '3Y');
-      return {
-        ...formatFundBase(f),
-        return1Y: m1Y?.returnPct != null ? Number(m1Y.returnPct) : null,
-        return3Y: m3Y?.returnPct != null ? Number(m3Y.returnPct) : null,
-        volatility1Y: m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
-        maxDrawdown1Y: m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
-        sharpe1Y: m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
-      };
+      return buildFundDto(f, m1Y, m3Y);
     });
 
-    return NextResponse.json({
-      data: fundList,
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-    });
+    return NextResponse.json(
+      { data: fundList, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } },
+      { headers: { 'Cache-Control': CACHE } },
+    );
   } catch (err) {
     return handleRouteError(err);
   }
@@ -253,17 +285,12 @@ export async function GET(req: NextRequest) {
 
 function buildDirectOrderBy(sortBy: string, sortDir: 'asc' | 'desc'): Record<string, unknown> {
   switch (sortBy) {
-    case 'nameTh':
-      return { nameTh: sortDir };
-    case 'riskLevel':
-      return { riskLevel: sortDir };
-    case 'fundType':
-      return { fundType: sortDir };
-    case 'amc':
-      return { amc: { nameTh: sortDir } };
-    case 'latestNav':
-      return { navPrices: { _max: { lastVal: sortDir } } };
-    default:
-      return { nameTh: 'asc' };
+    case 'nameTh':   return { nameTh: sortDir };
+    case 'riskLevel': return { riskLevel: sortDir };
+    case 'fundType': return { fundType: sortDir };
+    case 'amc':      return { amc: { nameTh: sortDir } };
+    // latestNav: sort by the max lastVal among the fund's recent prices (approximate)
+    case 'latestNav': return { navPrices: { _max: { lastVal: sortDir } } };
+    default:         return { nameTh: 'asc' };
   }
 }

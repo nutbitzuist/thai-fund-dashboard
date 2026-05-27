@@ -149,14 +149,17 @@ export async function GET(req: NextRequest) {
       endDate: m.endDate.toISOString().split('T')[0],
     }));
 
-    return NextResponse.json({
-      data,
-      metric,
-      sort,
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-      disclaimer:
-        'อันดับนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต',
-    });
+    return NextResponse.json(
+      {
+        data,
+        metric,
+        sort,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+        disclaimer:
+          'อันดับนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต',
+      },
+      { headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600' } },
+    );
   } catch (err) {
     return handleRouteError(err);
   }

@@ -1,5 +1,7 @@
 // app/page.tsx — Homepage
-// Server component: renders fast, no client bundle overhead
+// Server component rendered with ISR (revalidates every 30 min).
+// Fund data changes once daily at 18:30 BKK — 30-min staleness is fine.
+export const revalidate = 1800;
 
 import Link from 'next/link'
 import { TrendingUp, Search, BarChart2, BookOpen, Shield, ArrowRight, Clock, Trophy, AlertTriangle } from 'lucide-react'

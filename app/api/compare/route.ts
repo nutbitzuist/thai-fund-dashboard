@@ -3,22 +3,29 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getPeriodStartDate } from '@/lib/utils';
 
-type FundWithRelations = Prisma.FundGetPayload<{
-  include: {
-    amc: { select: { nameTh: true } };
-    fundClasses: { where: { isDefault: true } };
-    fundMetrics: {
-      where: { period: { in: ['1M', '3M', '6M', '1Y', '3Y', '5Y'] } };
-      orderBy: { calculatedAt: 'desc' };
-    };
-  };
-}>;
+interface FundWithRelations {
+  projId: string;
+  projAbbrName: string | null;
+  nameTh: string;
+  nameEn: string | null;
+  riskLevel: number | null;
+  fundType: string | null;
+  amc: { nameTh: string } | null;
+  fundClasses: Array<{ id: number; classAbbrName: string; isDefault: boolean }>;
+  fundMetrics: Array<{
+    period: string;
+    returnPct: unknown;
+    annualizedVolatilityPct: unknown;
+    maxDrawdownPct: unknown;
+    sharpeRatio: unknown;
+    calculatedAt: Date;
+  }>;
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

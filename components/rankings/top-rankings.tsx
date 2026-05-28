@@ -89,26 +89,27 @@ const METRIC_URL_MAP: Partial<Record<Tab, string>> = {
 }
 
 export function TopRankings({ data1Y, dataYTD, data3M, data1M }: TopRankingsProps) {
-  const [tab, setTab] = useState<Tab>('1Y')
+  const [tab, setTab] = useState<Tab>('1D')
   const [fundType, setFundType] = useState('')
-  const [rows, setRows] = useState<RankEntry[]>(data1Y)
+  const [rows, setRows] = useState<RankEntry[]>([])
   const [loading, setLoading] = useState(false)
 
   // Server-provided initial data (no API call needed for default state)
+  // Returns null when data isn't available server-side; empty array means "not yet loaded"
   const getServerData = useCallback((t: Tab): RankEntry[] | null => {
     if (fundType) return null // filtered — always fetch from API
     switch (t) {
-      case '1Y': return data1Y
-      case 'YTD': return dataYTD
-      case '3M': return data3M
-      case '1M': return data1M
+      case '1Y': return data1Y.length > 0 ? data1Y : null
+      case 'YTD': return dataYTD.length > 0 ? dataYTD : null
+      case '3M': return data3M.length > 0 ? data3M : null
+      case '1M': return data1M.length > 0 ? data1M : null
       default: return null
     }
   }, [fundType, data1Y, dataYTD, data3M, data1M])
 
   const fetchData = useCallback(async (t: Tab, type: string) => {
     const serverData = getServerData(t)
-    if (serverData && !type) {
+    if (serverData !== null && !type) {
       setRows(serverData)
       return
     }

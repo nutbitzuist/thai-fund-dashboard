@@ -29,22 +29,19 @@ export async function GET(
   const { period, classId } = parsed.data;
 
   try {
+    // Fetch fund + default class in one query
     const fund = await prisma.fund.findUnique({
       where: { projId },
-      select: { id: true },
+      select: {
+        id: true,
+        fundClasses: classId
+          ? { where: { id: classId }, select: { id: true }, take: 1 }
+          : { where: { isDefault: true }, select: { id: true }, take: 1 },
+      },
     });
     if (!fund) return createErrorResponse('FUND_NOT_FOUND', 404);
 
-    // Determine class to use
-    let fundClassId = classId;
-    if (!fundClassId) {
-      const defaultClass = await prisma.fundClass.findFirst({
-        where: { fundId: fund.id, isDefault: true },
-        select: { id: true },
-      });
-      fundClassId = defaultClass?.id;
-    }
-
+    const fundClassId = fund.fundClasses[0]?.id;
     if (!fundClassId) return createErrorResponse('NAV_NOT_FOUND', 404);
 
     // Calculate start date

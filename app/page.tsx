@@ -41,66 +41,52 @@ interface MetricRow {
 }
 
 async function getTopRankings(): Promise<{ data1Y: RankEntry[]; dataYTD: RankEntry[]; data3M: RankEntry[]; data1M: RankEntry[] }> {
-  const fundWhere = { fundStatus: { in: ['RG', 'SE'] } }
-  const baseQuery = {
-    fundClass: { isDefault: true },
-    returnPct: { not: null },
-    fund: fundWhere,
-  }
-  const select = {
-    period: true,
-    returnPct: true,
-    fund: {
-      select: {
-        projId: true,
-        projAbbrName: true,
-        nameTh: true,
-        fundType: true,
-        amc: { select: { nameTh: true } },
-      },
-    },
-  }
-
   try {
-    const [rows1Y, rowsYTD, rows3M, rows1M] = await Promise.all([
-      prisma.fundMetric.findMany({
-        where: { ...baseQuery, period: '1Y' },
-        orderBy: { returnPct: 'desc' },
-        take: 10,
-        select,
-      }),
-      prisma.fundMetric.findMany({
-        where: { ...baseQuery, period: 'YTD' },
-        orderBy: { returnPct: 'desc' },
-        take: 10,
-        select,
-      }),
-      prisma.fundMetric.findMany({
-        where: { ...baseQuery, period: '3M' },
-        orderBy: { returnPct: 'desc' },
-        take: 10,
-        select,
-      }),
-      prisma.fundMetric.findMany({
-        where: { ...baseQuery, period: '1M' },
-        orderBy: { returnPct: 'desc' },
-        take: 10,
-        select,
-      }),
-    ])
+    // Fetch all 4 periods in one query, then sort and slice in JS
+    const allRows = await prisma.fundMetric.findMany({
+      where: {
+        period: { in: ['1Y', 'YTD', '3M', '1M'] },
+        fundClass: { isDefault: true },
+        returnPct: { not: null },
+        fund: { fundStatus: { in: ['RG', 'SE'] } },
+      },
+      orderBy: { returnPct: 'desc' },
+      select: {
+        period: true,
+        returnPct: true,
+        fund: {
+          select: {
+            projId: true,
+            projAbbrName: true,
+            nameTh: true,
+            fundType: true,
+            amc: { select: { nameTh: true } },
+          },
+        },
+      },
+    })
 
-    const toEntries = (rows: MetricRow[]): RankEntry[] =>
-      rows.map((r, i) => ({
-        rank: i + 1,
-        projId: r.fund.projId,
-        projAbbrName: r.fund.projAbbrName,
-        nameTh: r.fund.nameTh,
-        fundType: (r.fund as { fundType?: string | null }).fundType ?? null,
-        amc: r.fund.amc,
-        returnPct: r.returnPct != null ? Number(r.returnPct) : null,
-      }))
+    const byPeriod: Record<string, MetricRow[]> = {}
+    for (const row of allRows as MetricRow[]) {
+      if (!byPeriod[row.period]) byPeriod[row.period] = []
+      byPeriod[row.period].push(row)
+    }
 
-    return { data1Y: toEntries(rows1Y as MetricRow[]), dataYTD: toEntries(rowsYTD as MetricRow[]), data3M: toEntries(rows3M as MetricRow[]), data1M: toEntries(rows1M as MetricRow[]) }
+    const top10 = (period: string): RankEntry[] =>
+      (byPeriod[period] ?? [])
+        .sort((a, b) => Number(b.returnPct) - Number(a.returnPct))
+        .slice(0, 10)
+        .map((r, i) => ({
+          rank: i + 1,
+          projId: r.fund.projId,
+          projAbbrName: r.fund.projAbbrName,
+          nameTh: r.fund.nameTh,
+          fundType: (r.fund as { fundType?: string | null }).fundType ?? null,
+          amc: r.fund.amc,
+          returnPct: r.returnPct != null ? Number(r.returnPct) : null,
+        }))
+
+    return { data1Y: top10('1Y'), dataYTD: top10('YTD'), data3M: top10('3M'), data1M: top10('1M') }
   } catch {
     return { data1Y: [], dataYTD: [], data3M: [], data1M: [] }
   }

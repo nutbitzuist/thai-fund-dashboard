@@ -29,6 +29,7 @@ export async function GET(
           orderBy: { calculatedAt: 'desc' },
         },
         navPrices: {
+          where: { fundClass: { isDefault: true } },
           orderBy: { navDate: 'desc' },
           take: 2,
           select: { navDate: true, lastVal: true, buyPrice: true, sellPrice: true, fundClassId: true },

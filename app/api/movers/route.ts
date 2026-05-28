@@ -42,23 +42,14 @@ export async function GET(req: NextRequest) {
   const { fundType, limit } = parsed.data;
 
   try {
-    // Get the two most recent NAV dates
-    const latestDateRow = await prisma.navPrice.findFirst({
-      orderBy: { navDate: 'desc' },
-      select: { navDate: true },
-    });
-    if (!latestDateRow) return NextResponse.json({ gainers: [], losers: [], date: null });
+    // Get the two most recent distinct NAV dates in one query
+    const recentDates = await prisma.$queryRaw<{ navDate: Date }[]>`
+      SELECT DISTINCT "navDate" FROM nav_price ORDER BY "navDate" DESC LIMIT 2
+    `;
+    if (!recentDates.length) return NextResponse.json({ gainers: [], losers: [], date: null });
+    if (recentDates.length < 2) return NextResponse.json({ gainers: [], losers: [], date: recentDates[0].navDate });
 
-    const latestDate = latestDateRow.navDate;
-
-    const prevDateRow = await prisma.navPrice.findFirst({
-      where: { navDate: { lt: latestDate } },
-      orderBy: { navDate: 'desc' },
-      select: { navDate: true },
-    });
-    if (!prevDateRow) return NextResponse.json({ gainers: [], losers: [], date: latestDate });
-
-    const prevDate = prevDateRow.navDate;
+    const [latestDate, prevDate] = [recentDates[0].navDate, recentDates[1].navDate];
 
     const fundWhere = {
       fundStatus: { in: ['RG', 'SE'] },

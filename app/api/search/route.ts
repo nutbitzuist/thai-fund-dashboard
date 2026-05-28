@@ -88,10 +88,10 @@ export async function GET(req: NextRequest) {
       return { ...rest, dailyChangePct, latestNav: today ? Number(today.lastVal) : null }
     })
 
-    // Log search anonymously
-    await prisma.searchLog.create({
+    // Log search anonymously — fire and forget (non-critical, no await)
+    prisma.searchLog.create({
       data: { query: query.slice(0, 200), resultCount: funds.length },
-    }).catch(() => {}); // non-critical
+    }).catch(() => {});
 
     return NextResponse.json(
       { results, total: results.length },

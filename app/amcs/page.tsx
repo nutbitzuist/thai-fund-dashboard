@@ -88,7 +88,7 @@ export default async function AmcsPage() {
         {amcs.map((amc) => (
           <Link
             key={amc.id}
-            href={`/funds?amcId=${amc.id}`}
+            href={`/amcs/${encodeURIComponent(amc.uniqueId)}`}
             className="flex items-center gap-4 bg-white rounded-xl border border-slate-200 px-4 py-4 hover:border-blue-300 hover:shadow-sm transition-all group"
           >
             {/* Icon placeholder */}

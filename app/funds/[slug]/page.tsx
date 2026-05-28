@@ -110,22 +110,41 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         { projId: slug },
       ],
     },
-    select: { nameTh: true, nameEn: true, projAbbrName: true, projId: true, fundType: true, riskLevel: true, regisDate: true },
+    select: {
+      nameTh: true, nameEn: true, projAbbrName: true, projId: true,
+      fundType: true, riskLevel: true,
+      amc: { select: { nameTh: true } },
+      fundClasses: { where: { isDefault: true }, select: { id: true }, take: 1 },
+    },
   })
   if (!fund) return { title: 'ไม่พบกองทุน' }
 
   const abbr = fund.projAbbrName ?? fund.projId
-  const canonicalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app'}/funds/${encodeURIComponent(abbr)}`
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app'
+  const canonicalUrl = `${base}/funds/${encodeURIComponent(abbr)}`
+
+  // Fetch 1Y metric for richer description
+  const metric1Y = fund.fundClasses[0]?.id
+    ? await prisma.fundMetric.findFirst({
+        where: { fundClassId: fund.fundClasses[0].id, period: '1Y', returnPct: { not: null } },
+        select: { returnPct: true },
+      })
+    : null
+
+  const returnStr = metric1Y?.returnPct != null
+    ? ` ผลตอบแทน 1 ปี ${Number(metric1Y.returnPct) >= 0 ? '+' : ''}${Number(metric1Y.returnPct).toFixed(2)}%`
+    : ''
+  const amcStr = fund.amc?.nameTh ? ` โดย ${fund.amc.nameTh}` : ''
+  const riskStr = fund.riskLevel ? ` ระดับความเสี่ยง ${fund.riskLevel}/8` : ''
+  const description = `กองทุน ${abbr}${amcStr}${riskStr}${returnStr} ดูข้อมูล NAV รายวัน กราฟผลตอบแทน และการวิเคราะห์ความเสี่ยงจาก ก.ล.ต.`
 
   return {
     title: `${abbr} — ${fund.nameTh}`,
-    description: `ข้อมูล NAV ผลตอบแทน และความเสี่ยงของกองทุน ${fund.nameTh}${fund.nameEn ? ` (${fund.nameEn})` : ''}`,
-    alternates: {
-      canonical: canonicalUrl,
-    },
+    description,
+    alternates: { canonical: canonicalUrl },
     openGraph: {
       title: `${abbr} — ${fund.nameTh}`,
-      description: `ข้อมูล NAV ผลตอบแทน ความเสี่ยง ของกองทุน ${abbr}`,
+      description,
       url: canonicalUrl,
       type: 'website',
     },
@@ -200,8 +219,45 @@ export default async function FundDetailPage({ params }: Props) {
   const my1YReturn = m1Y?.returnPct != null ? Number(m1Y.returnPct) : null
   const compareUrl = `/compare?funds=${fund.projId}`
 
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app'
+  const abbr = fund.projAbbrName ?? fund.projId
+  const fundUrl_ = `${base}/funds/${encodeURIComponent(abbr)}`
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'FinancialProduct',
+        name: fund.nameTh,
+        alternateName: fund.nameEn ?? undefined,
+        description: `กองทุนรวม ${abbr} จดทะเบียนกับ ก.ล.ต. ประเทศไทย`,
+        url: fundUrl_,
+        provider: fund.amc ? {
+          '@type': 'FinancialService',
+          name: fund.amc.nameTh,
+          areaServed: 'TH',
+        } : undefined,
+        ...(my1YReturn != null && {
+          annualPercentageRate: { '@type': 'QuantitativeValue', value: Number(my1YReturn.toFixed(2)), unitText: '%' },
+        }),
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'หน้าแรก', item: base },
+          { '@type': 'ListItem', position: 2, name: 'กองทุนทั้งหมด', item: `${base}/funds` },
+          { '@type': 'ListItem', position: 3, name: abbr, item: fundUrl_ },
+        ],
+      },
+    ],
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Back + Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <Link href="/funds" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-700 w-fit">

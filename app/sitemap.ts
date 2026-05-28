@@ -1,38 +1,59 @@
-// app/sitemap.ts
-// Dynamic sitemap — generates one entry per active fund page.
-// Revalidated every 24h (ISR). SEC updates fund list daily.
+// app/sitemap.ts — Dynamic sitemap covering all indexable pages
 import type { MetadataRoute } from 'next';
 import prisma from '@/lib/db';
 
 export const revalidate = 86400; // 24h
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app';
+const FUND_TYPES = ['EQ', 'FI', 'MM', 'BA', 'RE', 'CM', 'AI', 'FIF', 'SSF', 'RMF'];
 
-  // Static pages
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app';
+  const now = new Date();
+
   const staticPages: MetadataRoute.Sitemap = [
-    { url: baseUrl, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
-    { url: `${baseUrl}/funds`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
-    { url: `${baseUrl}/compare`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
+    { url: base,                   lastModified: now, changeFrequency: 'daily',   priority: 1.0 },
+    { url: `${base}/funds`,        lastModified: now, changeFrequency: 'daily',   priority: 0.9 },
+    { url: `${base}/rankings`,     lastModified: now, changeFrequency: 'daily',   priority: 0.9 },
+    { url: `${base}/movers`,       lastModified: now, changeFrequency: 'daily',   priority: 0.8 },
+    { url: `${base}/compare`,      lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
+    { url: `${base}/amcs`,         lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
+    { url: `${base}/learn`,        lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
+    { url: `${base}/methodology`,  lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
+    { url: `${base}/about`,        lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
   ];
 
-  // Dynamic fund pages — use projAbbrName as SEO slug (e.g. /funds/K-OIL)
+  const typePages: MetadataRoute.Sitemap = FUND_TYPES.map((type) => ({
+    url: `${base}/funds/type/${type}`,
+    lastModified: now,
+    changeFrequency: 'weekly' as const,
+    priority: 0.7,
+  }));
+
   try {
-    const funds = await prisma.fund.findMany({
-      where: { fundStatus: { in: ['RG', 'SE'] } },
-      select: { projId: true, projAbbrName: true },
-    });
+    const [funds, amcs] = await Promise.all([
+      prisma.fund.findMany({
+        where: { fundStatus: { in: ['RG', 'SE'] } },
+        select: { projAbbrName: true, projId: true },
+      }),
+      prisma.amc.findMany({ select: { uniqueId: true } }),
+    ]);
 
     const fundPages: MetadataRoute.Sitemap = funds.map((f) => ({
-      url: `${baseUrl}/funds/${encodeURIComponent(f.projAbbrName ?? f.projId)}`,
-      lastModified: new Date(),
+      url: `${base}/funds/${encodeURIComponent(f.projAbbrName ?? f.projId)}`,
+      lastModified: now,
       changeFrequency: 'daily' as const,
       priority: 0.8,
     }));
 
-    return [...staticPages, ...fundPages];
+    const amcPages: MetadataRoute.Sitemap = amcs.map((a) => ({
+      url: `${base}/amcs/${encodeURIComponent(a.uniqueId)}`,
+      lastModified: now,
+      changeFrequency: 'weekly' as const,
+      priority: 0.6,
+    }));
+
+    return [...staticPages, ...typePages, ...fundPages, ...amcPages];
   } catch {
-    // If DB is unavailable, return static pages only
-    return staticPages;
+    return [...staticPages, ...typePages];
   }
 }

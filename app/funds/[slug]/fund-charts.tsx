@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { Download } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -8,6 +9,7 @@ import { NavChart } from '@/components/charts/nav-chart'
 import { NormalizedChart } from '@/components/charts/normalized-chart'
 import { DrawdownChart } from '@/components/charts/drawdown-chart'
 import { calcDrawdownSeries } from '@/lib/calculations'
+import { formatPct, formatNav, getReturnColorClass, cn } from '@/lib/utils'
 
 interface NavPoint {
   date: string
@@ -27,6 +29,32 @@ interface FundChartsProps {
 }
 
 type Period = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'
+type ChartTab = 'nav' | 'normalized' | 'drawdown' | 'calculator'
+
+const PERIOD_LABELS: Record<Period, string> = {
+  '1M': '1เดือน', '3M': '3เดือน', '6M': '6เดือน',
+  '1Y': '1ปี', '3Y': '3ปี', '5Y': '5ปี', MAX: 'ทั้งหมด',
+}
+
+function calcAnnualizedReturn(totalReturnPct: number, days: number): number | null {
+  if (days < 2) return null
+  const years = days / 365
+  return (Math.pow(1 + totalReturnPct / 100, 1 / years) - 1) * 100
+}
+
+function downloadCSV(navData: NavPoint[], projId: string, period: string) {
+  const header = 'Date,NAV,Buy Price,Sell Price\n'
+  const rows = navData
+    .map((d) => `${d.date},${d.nav},${d.buyPrice ?? ''},${d.sellPrice ?? ''}`)
+    .join('\n')
+  const blob = new Blob(['﻿' + header + rows], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${projId}_nav_${period}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
   const [period, setPeriod] = useState<Period>('1Y')
@@ -34,7 +62,8 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
   const [normalizedData, setNormalizedData] = useState<NormalizedPoint[]>([])
   const [drawdownData, setDrawdownData] = useState<Array<{ date: string; drawdown: number }>>([])
   const [loading, setLoading] = useState(true)
-  const [activeChart, setActiveChart] = useState<'nav' | 'normalized' | 'drawdown'>('nav')
+  const [activeChart, setActiveChart] = useState<ChartTab>('nav')
+  const [investAmount, setInvestAmount] = useState('100000')
 
   useEffect(() => {
     async function load() {
@@ -51,13 +80,8 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
 
         setNavData(nav)
         setNormalizedData(norm)
-
-        // Calculate drawdown series from NAV
-        const ddSeries = calcDrawdownSeries(
-          nav.map((d) => ({ date: new Date(d.date), nav: d.nav }))
-        )
         setDrawdownData(
-          ddSeries.map((d) => ({
+          calcDrawdownSeries(nav.map((d) => ({ date: new Date(d.date), nav: d.nav }))).map((d) => ({
             date: d.date.toISOString().split('T')[0],
             drawdown: d.drawdown,
           }))
@@ -73,16 +97,37 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
     load()
   }, [projId, period, defaultClassId])
 
+  // Portfolio calculator derived values
+  const calcResult = useCallback(() => {
+    if (navData.length < 2) return null
+    const amount = parseFloat(investAmount.replace(/,/g, ''))
+    if (!amount || amount <= 0) return null
+
+    const startNav = navData[0].nav
+    const endNav = navData[navData.length - 1].nav
+    if (startNav <= 0) return null
+
+    const units = amount / startNav
+    const currentValue = units * endNav
+    const gain = currentValue - amount
+    const totalReturnPct = ((endNav - startNav) / startNav) * 100
+
+    const startDate = new Date(navData[0].date)
+    const endDate = new Date(navData[navData.length - 1].date)
+    const days = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000)
+    const annualized = calcAnnualizedReturn(totalReturnPct, days)
+
+    return { amount, currentValue, gain, totalReturnPct, annualized, units, startNav, endNav, days }
+  }, [navData, investAmount])
+
+  const result = calcResult()
+
   const periods: Period[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']
-  const periodLabels: Record<Period, string> = {
-    '1M': '1เดือน', '3M': '3เดือน', '6M': '6เดือน',
-    '1Y': '1ปี', '3Y': '3ปี', '5Y': '5ปี', MAX: 'ทั้งหมด',
-  }
 
   return (
     <Card>
       <CardContent className="p-6">
-        {/* Period Selector */}
+        {/* Period Selector + Download */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex gap-1.5 flex-wrap">
             {periods.map((p) => (
@@ -95,22 +140,37 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                {periodLabels[p]}
+                {PERIOD_LABELS[p]}
               </button>
             ))}
           </div>
 
-          {/* Chart type selector */}
-          <Tabs value={activeChart} onValueChange={(v) => setActiveChart(v as typeof activeChart)}>
-            <TabsList className="h-8">
-              <TabsTrigger value="nav" className="text-xs px-2.5">NAV</TabsTrigger>
-              <TabsTrigger value="normalized" className="text-xs px-2.5">Normalized</TabsTrigger>
-              <TabsTrigger value="drawdown" className="text-xs px-2.5">Drawdown</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex items-center gap-2">
+            {/* CSV Download */}
+            {navData.length > 0 && (
+              <button
+                onClick={() => downloadCSV(navData, projId, period)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                title="ดาวน์โหลด CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                CSV
+              </button>
+            )}
+
+            {/* Chart type selector */}
+            <Tabs value={activeChart} onValueChange={(v) => setActiveChart(v as ChartTab)}>
+              <TabsList className="h-8">
+                <TabsTrigger value="nav" className="text-xs px-2.5">NAV</TabsTrigger>
+                <TabsTrigger value="normalized" className="text-xs px-2.5">Normalized</TabsTrigger>
+                <TabsTrigger value="drawdown" className="text-xs px-2.5">Drawdown</TabsTrigger>
+                <TabsTrigger value="calculator" className="text-xs px-2.5">คำนวณ</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
 
-        {/* Chart */}
+        {/* Chart / Calculator */}
         {loading ? (
           <Skeleton className="h-[320px] w-full" />
         ) : (
@@ -144,11 +204,20 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
                 </p>
               </>
             )}
+            {activeChart === 'calculator' && (
+              <PortfolioCalculator
+                result={result}
+                investAmount={investAmount}
+                onAmountChange={setInvestAmount}
+                period={period}
+                noData={navData.length < 2}
+              />
+            )}
           </>
         )}
 
         {/* Data count info */}
-        {!loading && navData.length > 0 && (
+        {!loading && navData.length > 0 && activeChart !== 'calculator' && (
           <p className="text-xs text-slate-400 mt-2">
             ข้อมูล {navData.length.toLocaleString('th-TH')} วันทำการ
             ตั้งแต่ {navData[0]?.date} ถึง {navData[navData.length - 1]?.date}
@@ -156,5 +225,140 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// ── Portfolio Calculator ──────────────────────────────────────────────────────
+
+interface CalcResult {
+  amount: number
+  currentValue: number
+  gain: number
+  totalReturnPct: number
+  annualized: number | null
+  units: number
+  startNav: number
+  endNav: number
+  days: number
+}
+
+function PortfolioCalculator({
+  result,
+  investAmount,
+  onAmountChange,
+  period,
+  noData,
+}: {
+  result: CalcResult | null
+  investAmount: string
+  onAmountChange: (v: string) => void
+  period: Period
+  noData: boolean
+}) {
+  const formatThb = (v: number) =>
+    '฿' + v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  return (
+    <div className="py-2 space-y-5">
+      {/* Amount input */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          สมมติว่าลงทุนตอนต้นงวด {PERIOD_LABELS[period]}
+        </label>
+        <div className="relative w-full max-w-xs">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium text-sm">฿</span>
+          <input
+            type="number"
+            min="1"
+            step="1000"
+            value={investAmount}
+            onChange={(e) => onAmountChange(e.target.value)}
+            className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="100000"
+          />
+        </div>
+      </div>
+
+      {noData ? (
+        <p className="text-sm text-slate-400">ไม่มีข้อมูล NAV ในช่วงเวลานี้</p>
+      ) : !result ? (
+        <p className="text-sm text-slate-400">กรุณาใส่จำนวนเงิน</p>
+      ) : (
+        <>
+          {/* Result cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <ResultCard
+              label="เงินลงทุนเริ่มต้น"
+              value={formatThb(result.amount)}
+              sub={`NAV ณ วันนั้น: ${formatNav(result.startNav)}`}
+              neutral
+            />
+            <ResultCard
+              label="มูลค่าปัจจุบัน"
+              value={formatThb(result.currentValue)}
+              sub={`NAV ล่าสุด: ${formatNav(result.endNav)}`}
+              positive={result.gain >= 0}
+              negative={result.gain < 0}
+            />
+            <ResultCard
+              label="กำไร / ขาดทุน"
+              value={(result.gain >= 0 ? '+' : '') + formatThb(result.gain)}
+              sub={`ผลตอบแทนรวม ${formatPct(result.totalReturnPct)}`}
+              positive={result.gain >= 0}
+              negative={result.gain < 0}
+            />
+            <ResultCard
+              label={result.days >= 365 ? 'ผลตอบแทนต่อปี' : 'ผลตอบแทนรวม'}
+              value={result.days >= 365 && result.annualized != null
+                ? formatPct(result.annualized) + '/ปี'
+                : formatPct(result.totalReturnPct)}
+              sub={`${result.days} วันทำการ (${(result.days / 365).toFixed(1)} ปี)`}
+              positive={result.totalReturnPct >= 0}
+              negative={result.totalReturnPct < 0}
+            />
+          </div>
+
+          <p className="text-xs text-slate-400">
+            คำนวณจาก NAV ต้นงวดและ NAV ล่าสุดเท่านั้น ไม่รวมค่าธรรมเนียมซื้อขาย
+            ข้อมูลนี้มีไว้เพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ResultCard({
+  label,
+  value,
+  sub,
+  positive,
+  negative,
+  neutral,
+}: {
+  label: string
+  value: string
+  sub?: string
+  positive?: boolean
+  negative?: boolean
+  neutral?: boolean
+}) {
+  const valueClass = positive
+    ? 'text-green-600'
+    : negative
+    ? 'text-red-600'
+    : 'text-slate-900'
+
+  return (
+    <div className={cn(
+      'rounded-xl border p-3',
+      positive ? 'bg-green-50 border-green-100' :
+      negative ? 'bg-red-50 border-red-100' :
+      'bg-slate-50 border-slate-100'
+    )}>
+      <p className="text-xs text-slate-500 mb-1">{label}</p>
+      <p className={cn('text-base font-bold tabular-nums', valueClass)}>{value}</p>
+      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+    </div>
   )
 }

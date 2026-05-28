@@ -132,7 +132,14 @@ function SortHeader({ label, colMetric, activeMetric, sortDir, onClick, classNam
 
 // ── AMC multi-select dropdown ─────────────────────────────────────────────────
 
-const SHORT_AMC_RE = /บริษัทหลักทรัพย์จัดการกองทุน|จำกัด|บมจ\.|บจก\.|,|\(มหาชน\)/g
+function shortAmcName(name: string): string {
+  return name
+    .replace('บริษัทหลักทรัพย์จัดการกองทุน', 'บลจ.')
+    .replace(/จำกัด|\(มหาชน\)|บมจ\.|บจก\./g, '')
+    .replace(/,/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 interface AmcPickerProps {
   amcs: AmcOption[]
@@ -164,7 +171,7 @@ function AmcPicker({ amcs, value, onChange }: AmcPickerProps) {
     if (value.length === 0) return 'บลจ. ทั้งหมด'
     if (value.length === 1) {
       const a = amcs.find((a) => a.id === value[0])
-      return a ? a.nameTh.replace(SHORT_AMC_RE, '').trim() : 'บลจ. 1 แห่ง'
+      return a ? shortAmcName(a.nameTh) : 'บลจ. 1 แห่ง'
     }
     return `บลจ. (${value.length})`
   }
@@ -243,7 +250,7 @@ function AmcPicker({ amcs, value, onChange }: AmcPickerProps) {
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className={cn('block leading-tight', selected && 'text-blue-700 font-medium')}>
-                      {a.nameTh.replace(SHORT_AMC_RE, '').trim()}
+                      {shortAmcName(a.nameTh)}
                     </span>
                     {a.nameEn && <span className="block text-xs text-slate-400 mt-0.5">{a.nameEn}</span>}
                   </span>
@@ -485,9 +492,6 @@ export function RankingsClient() {
   const fmtPct = (v: number | null) => v == null ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`
   const fmtRatio = (v: number | null) => v == null ? '-' : v.toFixed(2)
 
-  // Short AMC name for display
-  const shortAmc = (name: string) =>
-    name.replace(/บริษัทหลักทรัพย์จัดการกองทุน|จำกัด|บมจ\.|บจก\.|,|\(มหาชน\)/g, '').trim()
 
   const selectedAmcNames = amcIds.map((id) => amcList.find((a) => a.id === id)?.nameTh).filter(Boolean) as string[]
 
@@ -667,7 +671,7 @@ export function RankingsClient() {
               {fundType && <Badge variant="secondary">{FUND_TYPE_LABELS[fundType] ?? fundType}</Badge>}
               {riskLevel && <Badge variant="secondary">ความเสี่ยงระดับ {riskLevel}</Badge>}
               {selectedAmcNames.map((name) => (
-                <Badge key={name} variant="secondary" className="max-w-[180px] truncate">{shortAmc(name)}</Badge>
+                <Badge key={name} variant="secondary" className="max-w-[180px] truncate">{shortAmcName(name)}</Badge>
               ))}
               <button
                 onClick={() => { setFundType(''); setRiskLevel(''); setAmcIds([]); setMetric('return1Y'); setSortDir('desc'); setPage(1); pushUrl({ fundType: null, riskLevel: null, amcIds: null, metric: 'return1Y', sort: 'desc', page: null }) }}
@@ -746,7 +750,7 @@ export function RankingsClient() {
                                 <span className="text-xs font-mono font-bold text-blue-700 group-hover/link:underline">
                                   {row.projAbbrName ?? row.projId}
                                 </span>
-                                <span className="text-xs text-slate-400 hidden sm:inline">{row.amc?.nameTh ? shortAmc(row.amc.nameTh) : ''}</span>
+                                <span className="text-xs text-slate-400 hidden sm:inline">{row.amc?.nameTh ? shortAmcName(row.amc.nameTh) : ''}</span>
                               </div>
                               <span className="text-sm text-slate-800 line-clamp-1 mt-0.5 group-hover/link:text-blue-700 transition-colors">
                                 {row.nameTh}
@@ -934,7 +938,7 @@ export function RankingsClient() {
                         </td>
                         <td className="px-3 py-3.5">
                           <p className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
-                            {shortAmc(row.amcName)}
+                            {shortAmcName(row.amcName)}
                           </p>
                           {row.amcNameEn && <p className="text-xs text-slate-400 mt-0.5">{row.amcNameEn}</p>}
                           {row.bestFundAbbr && (

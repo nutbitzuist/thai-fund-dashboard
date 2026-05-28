@@ -11,14 +11,16 @@ const navLinks = [
   { href: '/funds',    label: 'กองทุน' },
   { href: '/movers',   label: 'วันนี้' },
   { href: '/rankings', label: 'จัดอันดับ' },
-  { href: '/categories', label: 'หมวดหมู่' },
+  { href: '/heatmap',  label: 'Heatmap' },
   { href: '/amcs',     label: 'บลจ.' },
 ]
 
 const toolLinks = [
-  { href: '/screener',      label: 'Screener' },
-  { href: '/tools/rmf-ssf', label: 'คำนวณภาษี RMF/SSF' },
-  { href: '/tools/simulate', label: 'จำลองการลงทุน' },
+  { href: '/screener',               label: 'Screener' },
+  { href: '/tools/rmf-ssf',          label: 'คำนวณภาษี RMF/SSF' },
+  { href: '/tools/simulate',         label: 'จำลองการลงทุน' },
+  { href: '/tools/deposit-compare',  label: 'กองทุน vs เงินฝาก' },
+  { href: '/tools/twin',             label: 'กองทุนฝาแฝด' },
 ]
 
 export function Navbar() {

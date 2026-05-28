@@ -1,5 +1,6 @@
 // app/rankings/page.tsx — Rankings and Screener
 
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { AlertTriangle } from 'lucide-react'
 import { RankingsClient } from './rankings-client'
@@ -26,7 +27,9 @@ export default function RankingsPage() {
         ผลตอบแทนในอดีตไม่รับประกันอนาคต กรุณาศึกษาข้อมูลเพิ่มเติมก่อนลงทุน
       </div>
 
-      <RankingsClient />
+      <Suspense fallback={<div className="text-slate-400 text-sm py-12 text-center">กำลังโหลด...</div>}>
+        <RankingsClient />
+      </Suspense>
     </div>
   )
 }

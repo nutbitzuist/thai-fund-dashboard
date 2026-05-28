@@ -166,6 +166,7 @@ export interface CompareEntry {
 
 export type RankingMetric =
   | 'return1Y'
+  | 'return1M'
   | 'return3Y'
   | 'return6M'
   | 'returnYTD'

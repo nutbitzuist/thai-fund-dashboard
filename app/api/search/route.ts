@@ -61,6 +61,13 @@ export async function GET(req: NextRequest) {
         amc: {
           select: { nameTh: true, nameEn: true },
         },
+        // Include last 2 NAV prices for daily change calculation
+        navPrices: {
+          orderBy: { navDate: 'desc' as const },
+          take: 2,
+          where: { fundClass: { isDefault: true } },
+          select: { lastVal: true, navDate: true },
+        },
       },
       orderBy: [
         { fundStatus: 'asc' }, // active funds first
@@ -68,12 +75,24 @@ export async function GET(req: NextRequest) {
       ],
     });
 
+    // Compute daily change for each result
+    type RawFund = typeof funds[0]
+    const results = (funds as RawFund[]).map((f) => {
+      const [today, prev] = f.navPrices ?? []
+      const dailyChangePct =
+        today && prev
+          ? ((Number(today.lastVal) - Number(prev.lastVal)) / Number(prev.lastVal)) * 100
+          : null
+      const { navPrices: _, ...rest } = f as RawFund & { navPrices: unknown[] }
+      return { ...rest, dailyChangePct, latestNav: today ? Number(today.lastVal) : null }
+    })
+
     // Log search anonymously
     await prisma.searchLog.create({
       data: { query: query.slice(0, 200), resultCount: funds.length },
     }).catch(() => {}); // non-critical
 
-    return NextResponse.json({ results: funds, total: funds.length });
+    return NextResponse.json({ results, total: results.length });
   } catch (err) {
     return handleRouteError(err);
   }

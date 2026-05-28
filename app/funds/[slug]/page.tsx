@@ -6,13 +6,14 @@ import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock } from 'lucide-react'
+import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react'
 import prisma from '@/lib/db'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { RiskBadge } from '@/components/metrics/risk-badge'
 import { MetricCard } from '@/components/metrics/metric-card'
+import { WatchlistButton } from '@/components/fund/watchlist-button'
 import { FundCharts } from './fund-charts'
 import {
   FUND_TYPE_LABELS,
@@ -63,6 +64,71 @@ async function getFundBySlug(slug: string) {
   })
 }
 
+// Similar funds: same type, different fund, active, with 1Y metrics
+async function getSimilarFunds(fundType: string | null, excludeProjId: string) {
+  if (!fundType) return []
+  try {
+    const metrics = await prisma.fundMetric.findMany({
+      where: {
+        period: '1Y',
+        returnPct: { not: null },
+        fundClass: { isDefault: true },
+        fund: {
+          fundStatus: { in: ['RG', 'SE'] },
+          fundType,
+          projId: { not: excludeProjId },
+        },
+      },
+      orderBy: { returnPct: 'desc' },
+      take: 5,
+      select: {
+        returnPct: true,
+        fund: {
+          select: {
+            projId: true,
+            projAbbrName: true,
+            nameTh: true,
+            riskLevel: true,
+            amc: { select: { nameTh: true } },
+          },
+        },
+      },
+    })
+    return metrics.map((m) => ({
+      ...m.fund,
+      return1Y: m.returnPct != null ? Number(m.returnPct) : null,
+    }))
+  } catch {
+    return []
+  }
+}
+
+// Category stats + percentile rank (performance attribution — Feature 15)
+async function getCategoryStats(fundType: string | null) {
+  if (!fundType) return null
+  try {
+    const metrics = await prisma.fundMetric.findMany({
+      where: {
+        period: '1Y',
+        returnPct: { not: null },
+        fundClass: { isDefault: true },
+        fund: { fundStatus: { in: ['RG', 'SE'] }, fundType },
+      },
+      select: { returnPct: true },
+    })
+    if (metrics.length === 0) return null
+    const returns = metrics.map((m) => Number(m.returnPct)).filter((v) => !isNaN(v))
+    const avg = returns.reduce((a, b) => a + b, 0) / returns.length
+    const sorted = [...returns].sort((a, b) => a - b)
+    const median = sorted[Math.floor(sorted.length / 2)] ?? null
+    // Percentile rank: what % of funds does this fund beat?
+    // (computed later in the component once we know the fund's own return)
+    return { avg, median, count: returns.length, sorted }
+  } catch {
+    return null
+  }
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const fund = await prisma.fund.findFirst({
@@ -111,6 +177,23 @@ export default async function FundDetailPage({ params }: Props) {
   }
 
   const defaultClass = fund.fundClasses.find((c) => c.isDefault) ?? fund.fundClasses[0]
+
+  // Fetch similar funds, category stats, and AUM trend in parallel (non-blocking)
+  const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+  const [similarFunds, categoryStats, oldNavRecord] = await Promise.all([
+    getSimilarFunds(fund.fundType, fund.projId),
+    getCategoryStats(fund.fundType),
+    defaultClass?.id ? prisma.navPrice.findFirst({
+      where: {
+        fundClassId: defaultClass.id,
+        navDate: { lte: threeMonthsAgo },
+        netAsset: { not: null },
+      },
+      orderBy: { navDate: 'desc' },
+      select: { netAsset: true, navDate: true },
+    }) : null,
+  ])
+
   const latestNavRecord = fund.navPrices.find((n) => n.fundClassId === defaultClass?.id) ?? fund.navPrices[0]
   const prevNavRecord = fund.navPrices.find(
     (n) =>
@@ -149,12 +232,22 @@ export default async function FundDetailPage({ params }: Props) {
           <ArrowLeft className="h-4 w-4" />
           กลับไปค้นหากองทุน
         </Link>
-        <Link href={compareUrl}>
-          <Button variant="outline" size="sm">
-            <GitCompare className="h-4 w-4 mr-1.5" />
-            เพิ่มเข้าเปรียบเทียบ
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <WatchlistButton
+            fund={{
+              projId: fund.projId,
+              projAbbrName: fund.projAbbrName,
+              nameTh: fund.nameTh,
+              fundType: fund.fundType,
+            }}
+          />
+          <Link href={compareUrl}>
+            <Button variant="outline" size="sm">
+              <GitCompare className="h-4 w-4 mr-1.5" />
+              เพิ่มเข้าเปรียบเทียบ
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stale NAV Warning */}
@@ -270,13 +363,26 @@ export default async function FundDetailPage({ params }: Props) {
                 );
               })()}
 
-              {/* AUM */}
+              {/* AUM + trend */}
               {latestNavRecord?.netAsset && (
                 <div className="border-t border-slate-200 pt-2 text-xs">
                   <p className="text-slate-400 mb-0.5">ขนาดกองทุน (AUM)</p>
                   <p className="font-semibold text-slate-700 tabular-nums">
                     {formatAUM(Number(latestNavRecord.netAsset))}
                   </p>
+                  {oldNavRecord?.netAsset && (() => {
+                    const current = Number(latestNavRecord.netAsset)
+                    const old = Number(oldNavRecord.netAsset)
+                    const aumChangePct = old > 0 ? ((current - old) / old) * 100 : null
+                    if (!aumChangePct || Math.abs(aumChangePct) < 0.5) return null
+                    const isGrowing = aumChangePct > 0
+                    return (
+                      <p className={cn('mt-0.5 flex items-center gap-0.5', isGrowing ? 'text-emerald-600' : 'text-red-500')}>
+                        {isGrowing ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {isGrowing ? '+' : ''}{aumChangePct.toFixed(1)}% (3 เดือน)
+                      </p>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -441,6 +547,106 @@ export default async function FundDetailPage({ params }: Props) {
           </CardContent>
         </Card>
       </section>
+
+      {/* Category Comparison + Percentile Rank (Features 12, 15) */}
+      {categoryStats && fund.fundType && (
+        <section>
+          <h2 className="text-lg font-bold text-slate-900 mb-4">
+            เปรียบเทียบกับกองทุนประเภทเดียวกัน
+          </h2>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-slate-500 mb-3">
+                {FUND_TYPE_LABELS[fund.fundType] ?? fund.fundType} — จากข้อมูล {categoryStats.count.toLocaleString('th-TH')} กองทุน (ผลตอบแทน 1 ปี)
+              </p>
+              <div className="grid grid-cols-3 gap-4 mb-3">
+                <div className="text-center">
+                  <p className="text-xs text-slate-400 mb-1">กองทุนนี้</p>
+                  <p className={cn('text-xl font-bold tabular-nums', getReturnColorClass(m1Y?.returnPct != null ? Number(m1Y.returnPct) : null))}>
+                    {m1Y?.returnPct != null ? formatPct(Number(m1Y.returnPct)) : '-'}
+                  </p>
+                </div>
+                <div className="text-center border-x border-slate-100">
+                  <p className="text-xs text-slate-400 mb-1">ค่าเฉลี่ยประเภท</p>
+                  <p className={cn('text-xl font-bold tabular-nums', getReturnColorClass(categoryStats.avg))}>
+                    {formatPct(categoryStats.avg)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-slate-400 mb-1">มัธยฐาน</p>
+                  <p className={cn('text-xl font-bold tabular-nums', getReturnColorClass(categoryStats.median))}>
+                    {categoryStats.median != null ? formatPct(categoryStats.median) : '-'}
+                  </p>
+                </div>
+              </div>
+              {m1Y?.returnPct != null && (() => {
+                const myReturn = Number(m1Y.returnPct)
+                const diff = myReturn - categoryStats.avg
+                // Percentile: count funds this fund beats
+                const beatCount = categoryStats.sorted.filter((r) => r < myReturn).length
+                const percentile = Math.round((beatCount / categoryStats.sorted.length) * 100)
+                const isTop = percentile >= 75
+                const isBottom = percentile < 25
+                return (
+                  <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <p className={cn('text-sm font-medium flex items-center gap-1', diff >= 0 ? 'text-emerald-600' : 'text-red-600')}>
+                      {diff >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                      {diff >= 0 ? 'สูงกว่า' : 'ต่ำกว่า'} ค่าเฉลี่ย {Math.abs(diff).toFixed(2)}%
+                    </p>
+                    <div className={cn(
+                      'text-xs font-semibold rounded-full px-3 py-1.5',
+                      isTop ? 'bg-emerald-100 text-emerald-700' :
+                      isBottom ? 'bg-red-100 text-red-700' :
+                      'bg-slate-100 text-slate-600'
+                    )}>
+                      {isTop ? '🏆 ' : isBottom ? '⚠️ ' : ''}
+                      Top {100 - percentile}% ของกองทุนประเภทนี้ (เปอร์เซ็นไทล์ที่ {percentile})
+                    </div>
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* Similar Funds (Feature 5) */}
+      {similarFunds.length > 0 && fund.fundType && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-slate-900">
+              กองทุนประเภทเดียวกัน — {FUND_TYPE_LABELS[fund.fundType] ?? fund.fundType} ผลตอบแทนสูงสุด
+            </h2>
+            <Link
+              href={`/funds/type/${fund.fundType.toLowerCase()}`}
+              className="text-sm text-blue-700 hover:underline flex items-center gap-1"
+            >
+              ดูทั้งหมด <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {similarFunds.map((sf) => (
+              <Link
+                key={sf.projId}
+                href={fundUrl(sf)}
+                className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 hover:border-blue-200 hover:shadow-sm transition-all group"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-mono font-bold text-blue-700">{sf.projAbbrName ?? sf.projId}</span>
+                  <p className="text-sm text-slate-800 truncate mt-0.5 group-hover:text-blue-700">{sf.nameTh}</p>
+                  <p className="text-xs text-slate-400">{sf.amc?.nameTh}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-slate-400">1Y</p>
+                  <p className={cn('text-sm font-bold tabular-nums', getReturnColorClass(sf.return1Y))}>
+                    {sf.return1Y != null ? formatPct(sf.return1Y) : '-'}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Disclaimer */}
       <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">

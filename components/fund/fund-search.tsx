@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Search, X, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn, formatPct, getReturnColorClass, fundUrl } from '@/lib/utils'
-import { RISK_LEVEL_LABELS } from '@/types'
+import { RISK_LEVEL_LABELS, FUND_TYPE_LABELS } from '@/types'
 
 interface FundResult {
   id: number
@@ -17,6 +17,8 @@ interface FundResult {
   fundType: string | null
   riskLevel: number | null
   amc: { nameTh: string } | null
+  dailyChangePct?: number | null
+  latestNav?: number | null
 }
 
 interface FundSearchProps {
@@ -157,14 +159,19 @@ export function FundSearch({
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-mono font-bold text-blue-700 shrink-0">
                           {fund.projAbbrName ?? fund.projId}
                         </span>
+                        {fund.fundType && (
+                          <span className="text-xs bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 shrink-0">
+                            {FUND_TYPE_LABELS[fund.fundType] ?? fund.fundType}
+                          </span>
+                        )}
                         {fund.riskLevel && (
-                          <span className="text-xs text-slate-400">
-                            ความเสี่ยง {fund.riskLevel}
+                          <span className="text-xs text-slate-400 shrink-0">
+                            เสี่ยง {fund.riskLevel}
                           </span>
                         )}
                       </div>
@@ -173,11 +180,18 @@ export function FundSearch({
                         <p className="text-xs text-slate-400 truncate">{fund.amc.nameTh}</p>
                       )}
                     </div>
-                    {fund.fundStatus && fund.fundStatus !== 'RG' && (
-                      <span className="text-xs bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 shrink-0">
-                        {fund.fundStatus === 'SE' ? 'รับซื้อคืน' : fund.fundStatus}
-                      </span>
-                    )}
+                    <div className="text-right shrink-0 space-y-0.5">
+                      {fund.dailyChangePct != null && (
+                        <p className={cn('text-xs font-semibold tabular-nums', getReturnColorClass(fund.dailyChangePct))}>
+                          {formatPct(fund.dailyChangePct)}
+                        </p>
+                      )}
+                      {fund.fundStatus && fund.fundStatus !== 'RG' && (
+                        <span className="inline-block text-xs bg-amber-100 text-amber-700 rounded px-1.5 py-0.5">
+                          {fund.fundStatus === 'SE' ? 'รับซื้อคืน' : fund.fundStatus}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               </li>

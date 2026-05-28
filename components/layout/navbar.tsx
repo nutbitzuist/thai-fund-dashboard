@@ -2,16 +2,17 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, Menu, X } from 'lucide-react'
+import { TrendingUp, Menu, X, Heart, Activity } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 const navLinks = [
   { href: '/funds', label: 'กองทุน' },
-  { href: '/compare', label: 'เปรียบเทียบ' },
+  { href: '/movers', label: 'วันนี้' },
   { href: '/rankings', label: 'จัดอันดับ' },
-  { href: '/learn', label: 'เรียนรู้' },
+  { href: '/compare', label: 'เปรียบเทียบ' },
+  { href: '/amcs', label: 'บลจ.' },
 ]
 
 export function Navbar() {
@@ -48,11 +49,12 @@ export function Navbar() {
 
         {/* Desktop CTA */}
         <div className="hidden items-center gap-3 md:flex">
-          <Link href="/about" className="text-sm text-slate-500 hover:text-slate-700">
-            เกี่ยวกับ
+          <Link href="/watchlist" className={cn('flex items-center gap-1 text-sm transition-colors hover:text-red-500', pathname === '/watchlist' ? 'text-red-500' : 'text-slate-500')}>
+            <Heart className="h-4 w-4" />
+            ติดตาม
           </Link>
           <Link href="/compare">
-            <Button size="sm">เปรียบเทียบกองทุน</Button>
+            <Button size="sm">เปรียบเทียบ</Button>
           </Link>
         </div>
 
@@ -85,6 +87,13 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <Link
+              href="/watchlist"
+              onClick={() => setMobileOpen(false)}
+              className="rounded-lg px-3 py-2 text-sm text-slate-700 flex items-center gap-2"
+            >
+              <Heart className="h-4 w-4 text-red-400" /> รายการติดตาม
+            </Link>
             <Link
               href="/about"
               onClick={() => setMobileOpen(false)}

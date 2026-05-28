@@ -30,6 +30,11 @@ const nextConfig: NextConfig = {
 
   // Experimental: server components external packages
   serverExternalPackages: ['@prisma/client', 'prisma'],
+
+  experimental: {
+    // Tree-shake large icon/chart packages — only bundle the exports actually imported
+    optimizePackageImports: ['lucide-react', 'recharts'],
+  },
 }
 
 export default nextConfig

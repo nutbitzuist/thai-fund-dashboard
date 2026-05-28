@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 }
 
 export const revalidate = 3600
+export const dynamic = 'force-static'
 
 const FUND_TYPE_CODES = ['EQ', 'FI', 'MM', 'BA', 'RE', 'CM', 'AI', 'FIF', 'SSF', 'RMF'] as const
 
@@ -28,60 +29,52 @@ interface CategoryStats {
 }
 
 async function getCategoryStats(): Promise<CategoryStats[]> {
-  const results = await Promise.all(
-    FUND_TYPE_CODES.map(async (type) => {
-      const funds = await prisma.fund.findMany({
+  const allFunds = await prisma.fund.findMany({
+    where: {
+      fundType: { in: FUND_TYPE_CODES as unknown as string[] },
+      fundStatus: { in: ['RG', 'SE'] },
+    },
+    select: {
+      fundType: true,
+      projAbbrName: true,
+      nameTh: true,
+      fundMetrics: {
         where: {
-          fundType: type,
-          fundStatus: { in: ['RG', 'SE'] },
+          period: '1Y',
+          fundClass: { isDefault: true },
+          returnPct: { not: null },
         },
-        select: {
-          projAbbrName: true,
-          nameTh: true,
-          fundMetrics: {
-            where: {
-              period: '1Y',
-              fundClass: { isDefault: true },
-              returnPct: { not: null },
-            },
-            orderBy: { calculatedAt: 'desc' },
-            take: 1,
-            select: { returnPct: true },
-          },
-        },
+        orderBy: { calculatedAt: 'desc' },
+        take: 1,
+        select: { returnPct: true },
+      },
+    },
+  })
+
+  const byType = new Map<string, typeof allFunds>()
+  for (const fund of allFunds) {
+    const t = fund.fundType ?? 'OTHER'
+    if (!byType.has(t)) byType.set(t, [])
+    byType.get(t)!.push(fund)
+  }
+
+  return FUND_TYPE_CODES.map((type) => {
+    const funds = byType.get(type) ?? []
+    const returns = funds
+      .flatMap((f) => f.fundMetrics)
+      .map((m) => Number(m.returnPct))
+      .filter((v) => !isNaN(v))
+    const avg1Y = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : null
+    const top3 = funds
+      .map((f) => {
+        const r = f.fundMetrics[0]?.returnPct
+        return r != null ? { projAbbrName: f.projAbbrName, nameTh: f.nameTh, returnPct: Number(r) } : null
       })
-
-      const fundCount = funds.length
-      const returns = funds
-        .flatMap((f) => f.fundMetrics)
-        .map((m) => Number(m.returnPct))
-        .filter((v) => !isNaN(v))
-
-      const avg1Y =
-        returns.length > 0
-          ? returns.reduce((a, b) => a + b, 0) / returns.length
-          : null
-
-      const fundsWithReturn = funds
-        .map((f) => {
-          const r = f.fundMetrics[0]?.returnPct
-          return r != null ? { projAbbrName: f.projAbbrName, nameTh: f.nameTh, returnPct: Number(r) } : null
-        })
-        .filter((f): f is TopFund => f !== null)
-        .sort((a, b) => b.returnPct - a.returnPct)
-        .slice(0, 3)
-
-      return {
-        type,
-        label: FUND_TYPE_LABELS[type] ?? type,
-        fundCount,
-        avg1Y,
-        top3: fundsWithReturn,
-      }
-    })
-  )
-
-  return results.filter((c) => c.fundCount > 0)
+      .filter((f): f is TopFund => f !== null)
+      .sort((a, b) => b.returnPct - a.returnPct)
+      .slice(0, 3)
+    return { type, label: FUND_TYPE_LABELS[type] ?? type, fundCount: funds.length, avg1Y, top3 }
+  }).filter((c) => c.fundCount > 0)
 }
 
 export default async function CategoriesPage() {

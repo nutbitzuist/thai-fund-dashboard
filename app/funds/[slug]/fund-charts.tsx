@@ -1,15 +1,19 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { Download } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { NavChart } from '@/components/charts/nav-chart'
-import { NormalizedChart } from '@/components/charts/normalized-chart'
-import { DrawdownChart } from '@/components/charts/drawdown-chart'
-import { AumChart } from '@/components/charts/aum-chart'
-import { MonthlyHeatmap } from '@/components/charts/monthly-heatmap'
+
+const ChartSkeleton = () => <Skeleton className="h-[320px] w-full" />
+
+const NavChart = dynamic(() => import('@/components/charts/nav-chart').then((m) => ({ default: m.NavChart })), { ssr: false, loading: ChartSkeleton })
+const NormalizedChart = dynamic(() => import('@/components/charts/normalized-chart').then((m) => ({ default: m.NormalizedChart })), { ssr: false, loading: ChartSkeleton })
+const DrawdownChart = dynamic(() => import('@/components/charts/drawdown-chart').then((m) => ({ default: m.DrawdownChart })), { ssr: false, loading: ChartSkeleton })
+const AumChart = dynamic(() => import('@/components/charts/aum-chart').then((m) => ({ default: m.AumChart })), { ssr: false, loading: ChartSkeleton })
+const MonthlyHeatmap = dynamic(() => import('@/components/charts/monthly-heatmap').then((m) => ({ default: m.MonthlyHeatmap })), { ssr: false, loading: ChartSkeleton })
 import { calcDrawdownSeries } from '@/lib/calculations'
 import { formatPct, formatNav, getReturnColorClass, cn } from '@/lib/utils'
 

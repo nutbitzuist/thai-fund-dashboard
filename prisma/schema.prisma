@@ -81,6 +81,7 @@ model FundClass {
 
   @@unique([fundId, classAbbrName])
   @@index([fundId])
+  @@index([fundId, isDefault]) // speeds up "get default class for fund" queries
   @@map("fund_class")
 }
 
@@ -159,6 +160,7 @@ model SyncLog {
 
   @@index([jobType])
   @@index([startedAt])
+  @@index([status]) // homepage queries SyncLog by status
   @@map("sync_log")
 }
 

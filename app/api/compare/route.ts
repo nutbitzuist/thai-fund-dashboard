@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
         fundMetrics: {
           where: { period: { in: ['1M', '3M', '6M', '1Y', '3Y', '5Y'] } },
           orderBy: { calculatedAt: 'desc' },
+          take: 12,
         },
       },
     });
@@ -96,19 +97,48 @@ export async function GET(req: NextRequest) {
       sellPrice: number | null;
     }> = {};
 
-    for (const fund of funds) {
-      const defaultClass = fund.fundClasses[0];
-      if (!defaultClass) continue;
+    // Collect funds that have a default class, then fire ALL queries in parallel
+    const fundEntries = funds
+      .map((fund) => ({ fund, defaultClass: fund.fundClasses[0] }))
+      .filter((e): e is typeof e & { defaultClass: NonNullable<typeof e.defaultClass> } => !!e.defaultClass);
 
-      // Fetch NAV series for chart
-      const navs = await prisma.navPrice.findMany({
-        where: {
-          fundClassId: defaultClass.id,
-          navDate: { gte: startDate, lte: endDate },
-        },
-        orderBy: { navDate: 'asc' },
-        select: { navDate: true, lastVal: true },
-      });
+    const [navResults, latestResults, snap3MResults, snap1YResults] = await Promise.all([
+      Promise.all(fundEntries.map(({ defaultClass }) =>
+        prisma.navPrice.findMany({
+          where: { fundClassId: defaultClass.id, navDate: { gte: startDate, lte: endDate } },
+          orderBy: { navDate: 'asc' },
+          select: { navDate: true, lastVal: true },
+        })
+      )),
+      Promise.all(fundEntries.map(({ defaultClass }) =>
+        prisma.navPrice.findFirst({
+          where: { fundClassId: defaultClass.id },
+          orderBy: { navDate: 'desc' },
+          select: { lastVal: true, netAsset: true, buyPrice: true, sellPrice: true, navDate: true },
+        })
+      )),
+      Promise.all(fundEntries.map(({ defaultClass }) =>
+        prisma.navPrice.findFirst({
+          where: { fundClassId: defaultClass.id, navDate: { lte: date3MAgo } },
+          orderBy: { navDate: 'desc' },
+          select: { netAsset: true, navDate: true },
+        })
+      )),
+      Promise.all(fundEntries.map(({ defaultClass }) =>
+        prisma.navPrice.findFirst({
+          where: { fundClassId: defaultClass.id, navDate: { lte: date1YAgo } },
+          orderBy: { navDate: 'desc' },
+          select: { netAsset: true, navDate: true },
+        })
+      )),
+    ]);
+
+    for (let i = 0; i < fundEntries.length; i++) {
+      const { fund } = fundEntries[i];
+      const navs = navResults[i];
+      const latest = latestResults[i];
+      const snap3M = snap3MResults[i];
+      const snap1Y = snap1YResults[i];
 
       if (navs.length) {
         const baseNav = Number(navs[0].lastVal);
@@ -118,25 +148,6 @@ export async function GET(req: NextRequest) {
           normalized: baseNav > 0 ? (Number(n.lastVal) / baseNav) * 100 : 100,
         }));
       }
-
-      // Fetch AUM + buy/sell at current, 3M ago, 1Y ago
-      const [latest, snap3M, snap1Y] = await Promise.all([
-        prisma.navPrice.findFirst({
-          where: { fundClassId: defaultClass.id },
-          orderBy: { navDate: 'desc' },
-          select: { lastVal: true, netAsset: true, buyPrice: true, sellPrice: true, navDate: true },
-        }),
-        prisma.navPrice.findFirst({
-          where: { fundClassId: defaultClass.id, navDate: { lte: date3MAgo } },
-          orderBy: { navDate: 'desc' },
-          select: { netAsset: true, navDate: true },
-        }),
-        prisma.navPrice.findFirst({
-          where: { fundClassId: defaultClass.id, navDate: { lte: date1YAgo } },
-          orderBy: { navDate: 'desc' },
-          select: { netAsset: true, navDate: true },
-        }),
-      ]);
 
       aumSnapshots[fund.projId] = {
         current: latest?.netAsset != null ? Number(latest.netAsset) : null,

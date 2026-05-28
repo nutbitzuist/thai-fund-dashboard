@@ -9,6 +9,7 @@ import { FundSearch } from '@/components/fund/fund-search'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { TopRankings, type RankEntry } from '@/components/rankings/top-rankings'
+import { PersonalizedCta } from '@/components/onboarding/personalized-cta'
 import prisma from '@/lib/db'
 import { formatDateTh } from '@/lib/utils'
 
@@ -211,6 +212,13 @@ export default async function HomePage() {
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-400" />
             อันดับนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต
           </p>
+        </div>
+      </section>
+
+      {/* Personalized CTA */}
+      <section className="bg-slate-50 border-b border-slate-200">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <PersonalizedCta />
         </div>
       </section>
 

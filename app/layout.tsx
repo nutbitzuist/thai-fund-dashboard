@@ -3,6 +3,7 @@ import { Noto_Sans_Thai, Inter } from 'next/font/google'
 import './globals.css'
 import { Navbar } from '@/components/layout/navbar'
 import { Footer } from '@/components/layout/footer'
+import { LayoutClient } from '@/components/layout/layout-client'
 
 const notoSansThai = Noto_Sans_Thai({
   subsets: ['thai', 'latin'],
@@ -53,7 +54,9 @@ export default function RootLayout({
         style={{ fontFamily: 'var(--font-noto-sans-thai), var(--font-inter), sans-serif' }}
       >
         <Navbar />
-        <main className="flex-1">{children}</main>
+        <LayoutClient>
+          <main className="flex-1">{children}</main>
+        </LayoutClient>
         <Footer />
       </body>
     </html>

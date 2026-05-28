@@ -24,7 +24,6 @@
 
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import * as https from 'https';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { config as dotenvConfig } from 'dotenv';
@@ -229,11 +228,21 @@ async function syncFundNavs(
       }
 
       const netAsset = item.net_asset != null && item.net_asset > 0 ? item.net_asset : null;
-      await prisma.navPrice.upsert({
-        where: { fundClassId_navDate: { fundClassId: fundClass.id, navDate: new Date(date) } },
-        update: { lastVal, buyPrice: item.buy_price ? parseFloat(item.buy_price) : null, sellPrice: item.sell_price ? parseFloat(item.sell_price) : null, ...(netAsset !== null && { netAsset }) },
-        create: { fundId, fundClassId: fundClass.id, navDate: new Date(date), lastVal, buyPrice: item.buy_price ? parseFloat(item.buy_price) : null, sellPrice: item.sell_price ? parseFloat(item.sell_price) : null, netAsset },
-      });
+      const buyPrice = item.buy_price ? parseFloat(item.buy_price) : null;
+      const sellPrice = item.sell_price ? parseFloat(item.sell_price) : null;
+      // Use raw SQL — PrismaNeonHttp doesn't support the transactions upsert uses internally
+      await prisma.$executeRaw`
+        INSERT INTO nav_price (fund_id, fund_class_id, nav_date, last_val,
+                               buy_price, sell_price, net_asset, created_at, updated_at)
+        VALUES (${fundId}, ${fundClass.id}, ${new Date(date)}, ${lastVal},
+                ${buyPrice}, ${sellPrice}, ${netAsset}, NOW(), NOW())
+        ON CONFLICT (fund_class_id, nav_date) DO UPDATE SET
+          last_val   = EXCLUDED.last_val,
+          buy_price  = EXCLUDED.buy_price,
+          sell_price = EXCLUDED.sell_price,
+          net_asset  = COALESCE(EXCLUDED.net_asset, nav_price.net_asset),
+          updated_at = NOW()
+      `;
       inserted++;
     }
 
@@ -326,11 +335,25 @@ async function calcMetricsForFund(prisma: PrismaClient, fundId: number): Promise
     const sharpe = vol && vol > 0 ? (ret - riskFreeRate) / vol : null;
     const navCount = navPoints.filter((n) => n.date >= startDate && n.date <= endDate).length;
 
-    await prisma.fundMetric.upsert({
-      where: { fundClassId_period_endDate: { fundClassId: defaultClass.id, period, endDate } },
-      update: { startDate, returnPct: ret, annualizedVolatilityPct: vol, maxDrawdownPct: dd, sharpeRatio: sharpe, navCount, calculatedAt: new Date() },
-      create: { fundId, fundClassId: defaultClass.id, period, startDate, endDate, returnPct: ret, annualizedVolatilityPct: vol, maxDrawdownPct: dd, sharpeRatio: sharpe, navCount },
-    });
+    // Use raw SQL — PrismaNeonHttp doesn't support the transactions upsert uses internally
+    await prisma.$executeRaw`
+      INSERT INTO fund_metric (fund_id, fund_class_id, period, start_date, end_date,
+                               return_pct, annualized_volatility_pct, max_drawdown_pct,
+                               sharpe_ratio, nav_count, calculated_at)
+      VALUES (
+        ${fundId}, ${defaultClass.id}, ${period},
+        ${startDate}, ${endDate},
+        ${ret}, ${vol}, ${dd}, ${sharpe}, ${navCount}, NOW()
+      )
+      ON CONFLICT (fund_class_id, period, end_date) DO UPDATE SET
+        start_date                = EXCLUDED.start_date,
+        return_pct                = EXCLUDED.return_pct,
+        annualized_volatility_pct = EXCLUDED.annualized_volatility_pct,
+        max_drawdown_pct          = EXCLUDED.max_drawdown_pct,
+        sharpe_ratio              = EXCLUDED.sharpe_ratio,
+        nav_count                 = EXCLUDED.nav_count,
+        calculated_at             = NOW()
+    `;
     calculated++;
   }
   return calculated;
@@ -365,8 +388,10 @@ async function main() {
   const navApiKey = process.env.SEC_NAV_API_KEY;
   if (!navApiKey) throw new Error('SEC_NAV_API_KEY is not set. Run: source .env.local && DATABASE_URL="$DATABASE_URL" SEC_NAV_API_KEY="$SEC_NAV_API_KEY" npx tsx scripts/backfill-navs.ts');
 
-  // Use Neon HTTP adapter for Neon URLs (TCP fails due to SCRAM channel binding).
-  // For standard PG, use PrismaPg.
+  // Neon URLs: use WebSocket Pool (PrismaNeon) — supports full transactions.
+  // PrismaNeonHttp (HTTP) does NOT support transactions which Prisma uses internally.
+  // WebSocket avoids the SCRAM-SHA-256-PLUS channel binding issue that blocks TCP.
+  // Force IPv4 DNS so the WebSocket connection doesn't time out on IPv6-broken networks.
   const isNeon = (() => {
     try { const h = new URL(connStr).hostname; return h.endsWith('.neon.tech') || h.includes('.neon.'); }
     catch { return false; }
@@ -374,41 +399,19 @@ async function main() {
 
   let prisma: PrismaClient;
   if (isNeon) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { neonConfig, neon } = require('@neondatabase/serverless');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PrismaNeonHttp } = require('@prisma/adapter-neon');
+    // Prefer IPv4 — prevents WebSocket/DNS timeout on networks where IPv6 can't reach Neon
+    const { setDefaultResultOrder } = await import('dns');
+    setDefaultResultOrder('ipv4first');
 
-    // Force IPv4 — undici tries IPv6 first which times out on some networks
-    if (!process.env.VERCEL) {
-      neonConfig.fetchFunction = (input: RequestInfo | URL, init?: RequestInit) => {
-        const urlStr = typeof input === 'string' ? input : input.toString();
-        const parsed = new URL(urlStr);
-        const body = (init?.body as string) ?? '';
-        const headers = (init?.headers ?? {}) as Record<string, string>;
-        return new Promise<Response>((resolve, reject) => {
-          const req = https.request({
-            hostname: parsed.hostname, port: 443,
-            path: parsed.pathname + parsed.search,
-            method: (init?.method ?? 'GET').toUpperCase(),
-            family: 4,
-            headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
-          }, (res) => {
-            const chunks: Buffer[] = [];
-            res.on('data', (d: Buffer) => chunks.push(d));
-            res.on('end', () => {
-              const text = Buffer.concat(chunks).toString('utf8');
-              resolve(new Response(text, { status: res.statusCode ?? 200, headers: res.headers as HeadersInit }));
-            });
-          });
-          req.on('error', reject);
-          if (body) req.write(body);
-          req.end();
-        });
-      };
-    }
+    // @neondatabase/serverless doesn't auto-detect Node.js 22's native WebSocket
+    // — must set webSocketConstructor explicitly before creating the Pool.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { neonConfig } = require('@neondatabase/serverless');
+    neonConfig.webSocketConstructor = globalThis.WebSocket;
 
-    const adapter = new PrismaNeonHttp(connStr);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaNeon } = require('@prisma/adapter-neon');
+    const adapter = new PrismaNeon({ connectionString: connStr });
     prisma = new PrismaClient({ adapter } as never);
   } else {
     const adapter = new PrismaPg({ connectionString: connStr, max: 3 });

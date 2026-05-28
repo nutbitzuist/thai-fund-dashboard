@@ -31,18 +31,15 @@ export async function syncAmcs(): Promise<number> {
 
   for (const amc of amcs) {
     if (!amc.unique_id) continue;
-    await prisma.amc.upsert({
-      where: { uniqueId: amc.unique_id },
-      update: {
-        nameTh: amc.name_th ?? '',
-        nameEn: amc.name_en ?? null,
-      },
-      create: {
-        uniqueId: amc.unique_id,
-        nameTh: amc.name_th ?? '',
-        nameEn: amc.name_en ?? null,
-      },
-    });
+    // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+    await prisma.$executeRaw`
+      INSERT INTO amc (unique_id, name_th, name_en, created_at, updated_at)
+      VALUES (${amc.unique_id}, ${amc.name_th ?? ''}, ${amc.name_en ?? null}, NOW(), NOW())
+      ON CONFLICT (unique_id) DO UPDATE SET
+        name_th   = EXCLUDED.name_th,
+        name_en   = EXCLUDED.name_en,
+        updated_at = NOW()
+    `;
     upserted++;
   }
 
@@ -77,34 +74,30 @@ export async function syncFunds(): Promise<number> {
           ? new Date(regisDateRaw)
           : null;
 
-      await prisma.fund.upsert({
-        where: { projId: fund.proj_id },
-        update: {
-          projAbbrName: fund.proj_abbr_name ?? null,
-          nameTh,
-          nameEn,
-          fundStatus: fund.fund_status ?? null,
-          uniqueId: fund.unique_id ?? amc.uniqueId,
-          amcId: amc.id,
-          fundType: inferredType ?? null,
-          riskLevel: inferredRisk ?? null,
-          dividendPolicy: fund.dividend_policy ?? null,
-          ...(regisDate && { regisDate }),
-        },
-        create: {
-          projId: fund.proj_id,
-          projAbbrName: fund.proj_abbr_name ?? null,
-          nameTh,
-          nameEn,
-          fundStatus: fund.fund_status ?? null,
-          uniqueId: fund.unique_id ?? amc.uniqueId,
-          amcId: amc.id,
-          fundType: inferredType ?? null,
-          riskLevel: inferredRisk ?? null,
-          dividendPolicy: fund.dividend_policy ?? null,
-          regisDate,
-        },
-      });
+      // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+      await prisma.$executeRaw`
+        INSERT INTO fund (proj_id, proj_abbr_name, name_th, name_en, fund_status,
+                          unique_id, amc_id, fund_type, risk_level, dividend_policy,
+                          regis_date, created_at, updated_at)
+        VALUES (
+          ${fund.proj_id}, ${fund.proj_abbr_name ?? null}, ${nameTh}, ${nameEn},
+          ${fund.fund_status ?? null}, ${fund.unique_id ?? amc.uniqueId}, ${amc.id},
+          ${inferredType ?? null}, ${inferredRisk ?? null}, ${fund.dividend_policy ?? null},
+          ${regisDate}, NOW(), NOW()
+        )
+        ON CONFLICT (proj_id) DO UPDATE SET
+          proj_abbr_name  = EXCLUDED.proj_abbr_name,
+          name_th         = EXCLUDED.name_th,
+          name_en         = EXCLUDED.name_en,
+          fund_status     = EXCLUDED.fund_status,
+          unique_id       = EXCLUDED.unique_id,
+          amc_id          = EXCLUDED.amc_id,
+          fund_type       = EXCLUDED.fund_type,
+          risk_level      = EXCLUDED.risk_level,
+          dividend_policy = EXCLUDED.dividend_policy,
+          regis_date      = COALESCE(EXCLUDED.regis_date, fund.regis_date),
+          updated_at      = NOW()
+      `;
       upserted++;
     }
   }
@@ -172,29 +165,21 @@ export async function syncNavForFund(
       const netAsset =
         item.net_asset != null && item.net_asset > 0 ? item.net_asset : null;
 
-      await prisma.navPrice.upsert({
-        where: {
-          fundClassId_navDate: {
-            fundClassId: fundClass.id,
-            navDate: new Date(date),
-          },
-        },
-        update: {
-          lastVal: lastVal,
-          buyPrice: item.buy_price ? parseFloat(item.buy_price) : null,
-          sellPrice: item.sell_price ? parseFloat(item.sell_price) : null,
-          ...(netAsset !== null && { netAsset }),
-        },
-        create: {
-          fundId,
-          fundClassId: fundClass.id,
-          navDate: new Date(date),
-          lastVal: lastVal,
-          buyPrice: item.buy_price ? parseFloat(item.buy_price) : null,
-          sellPrice: item.sell_price ? parseFloat(item.sell_price) : null,
-          netAsset,
-        },
-      });
+      // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+      const buyPrice = item.buy_price ? parseFloat(item.buy_price) : null;
+      const sellPrice = item.sell_price ? parseFloat(item.sell_price) : null;
+      await prisma.$executeRaw`
+        INSERT INTO nav_price (fund_id, fund_class_id, nav_date, last_val,
+                               buy_price, sell_price, net_asset, created_at, updated_at)
+        VALUES (${fundId}, ${fundClass.id}, ${new Date(date)}, ${lastVal},
+                ${buyPrice}, ${sellPrice}, ${netAsset}, NOW(), NOW())
+        ON CONFLICT (fund_class_id, nav_date) DO UPDATE SET
+          last_val   = EXCLUDED.last_val,
+          buy_price  = EXCLUDED.buy_price,
+          sell_price = EXCLUDED.sell_price,
+          net_asset  = COALESCE(EXCLUDED.net_asset, nav_price.net_asset),
+          updated_at = NOW()
+      `;
       inserted++;
     }
   }
@@ -329,36 +314,27 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
 
     if (result.navCount < 2) continue;
 
-    await prisma.fundMetric.upsert({
-      where: {
-        fundClassId_period_endDate: {
-          fundClassId: defaultClass.id,
-          period,
-          endDate: result.endDate,
-        },
-      },
-      update: {
-        startDate: result.startDate,
-        returnPct: result.returnPct,
-        annualizedVolatilityPct: result.annualizedVolatilityPct,
-        maxDrawdownPct: result.maxDrawdownPct,
-        sharpeRatio: result.sharpeRatio,
-        navCount: result.navCount,
-        calculatedAt: new Date(),
-      },
-      create: {
-        fundId,
-        fundClassId: defaultClass.id,
-        period,
-        startDate: result.startDate,
-        endDate: result.endDate,
-        returnPct: result.returnPct,
-        annualizedVolatilityPct: result.annualizedVolatilityPct,
-        maxDrawdownPct: result.maxDrawdownPct,
-        sharpeRatio: result.sharpeRatio,
-        navCount: result.navCount,
-      },
-    });
+    // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+    await prisma.$executeRaw`
+      INSERT INTO fund_metric (fund_id, fund_class_id, period, start_date, end_date,
+                               return_pct, annualized_volatility_pct, max_drawdown_pct,
+                               sharpe_ratio, nav_count, calculated_at)
+      VALUES (
+        ${fundId}, ${defaultClass.id}, ${period},
+        ${result.startDate}, ${result.endDate},
+        ${result.returnPct}, ${result.annualizedVolatilityPct},
+        ${result.maxDrawdownPct}, ${result.sharpeRatio},
+        ${result.navCount}, NOW()
+      )
+      ON CONFLICT (fund_class_id, period, end_date) DO UPDATE SET
+        start_date                  = EXCLUDED.start_date,
+        return_pct                  = EXCLUDED.return_pct,
+        annualized_volatility_pct   = EXCLUDED.annualized_volatility_pct,
+        max_drawdown_pct            = EXCLUDED.max_drawdown_pct,
+        sharpe_ratio                = EXCLUDED.sharpe_ratio,
+        nav_count                   = EXCLUDED.nav_count,
+        calculated_at               = NOW()
+    `;
     calculated++;
   }
 

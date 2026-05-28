@@ -25,6 +25,13 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as https from 'https';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+import { config as dotenvConfig } from 'dotenv';
+
+// Auto-load .env.local when running as a script
+const envFile = resolve(process.cwd(), '.env.local');
+if (existsSync(envFile)) dotenvConfig({ path: envFile });
 
 // ── Inline minimal versions of lib utilities ──
 // (avoids Next.js module resolution issues when running outside the app)

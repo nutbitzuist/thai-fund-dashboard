@@ -1,5 +1,11 @@
 // app/api/health/route.ts
-// GET /api/health — system health check
+// GET /api/health — data freshness check for external uptime monitors.
+//
+// Returns HTTP 200 when healthy, HTTP 503 when data is stale.
+// Point any free monitor (UptimeRobot, BetterUptime, etc.) at this URL
+// and alert on non-200 to know when the daily sync has broken.
+//
+// Stale threshold: 4 calendar days (covers Fri → Tue with a missed Monday).
 
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
@@ -7,39 +13,58 @@ import prisma from '@/lib/db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const STALE_THRESHOLD_DAYS = 4;
+
 export async function GET() {
-  const startMs = Date.now();
-  let dbOk = false;
-  let lastSync: Date | null = null;
-  let fundCount = 0;
-
   try {
-    await prisma.$queryRaw`SELECT 1`;
-    dbOk = true;
-
-    const [syncLog, count] = await Promise.all([
+    const [lastSync, lastNav, fundCount, navCount] = await Promise.all([
       prisma.syncLog.findFirst({
         where: { status: { in: ['SUCCESS', 'PARTIAL'] } },
         orderBy: { finishedAt: 'desc' },
-        select: { finishedAt: true },
+        select: { status: true, finishedAt: true, message: true, recordsProcessed: true },
       }),
-      prisma.fund.count(),
+      prisma.navPrice.findFirst({
+        orderBy: { navDate: 'desc' },
+        select: { navDate: true },
+      }),
+      prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] } } }),
+      prisma.navPrice.count(),
     ]);
 
-    lastSync = syncLog?.finishedAt ?? null;
-    fundCount = count;
-  } catch {
-    dbOk = false;
+    const now = new Date();
+    const lastNavDate = lastNav ? new Date(lastNav.navDate) : null;
+    const daysSinceNav = lastNavDate
+      ? Math.floor((now.getTime() - lastNavDate.getTime()) / 86400000)
+      : 999;
+
+    const healthy = daysSinceNav <= STALE_THRESHOLD_DAYS;
+
+    const body = {
+      healthy,
+      status: healthy ? 'ok' : 'stale',
+      lastNavDate: lastNavDate?.toISOString().split('T')[0] ?? null,
+      daysSinceLastNav: daysSinceNav,
+      activeFunds: fundCount,
+      totalNavRecords: navCount,
+      lastSync: lastSync
+        ? {
+            status: lastSync.status,
+            finishedAt: lastSync.finishedAt?.toISOString() ?? null,
+            recordsProcessed: lastSync.recordsProcessed,
+            message: lastSync.message,
+          }
+        : null,
+      checkedAt: now.toISOString(),
+    };
+
+    return NextResponse.json(body, {
+      status: healthy ? 200 : 503,
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { healthy: false, status: 'error', error: String(err), checkedAt: new Date().toISOString() },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } }
+    );
   }
-
-  const latencyMs = Date.now() - startMs;
-
-  return NextResponse.json({
-    status: dbOk ? 'ok' : 'degraded',
-    db: dbOk,
-    latencyMs,
-    fundCount,
-    lastSync: lastSync?.toISOString() ?? null,
-    timestamp: new Date().toISOString(),
-  });
 }

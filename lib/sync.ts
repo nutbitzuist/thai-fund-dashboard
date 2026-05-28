@@ -233,6 +233,21 @@ export async function syncAllNavs(
 ): Promise<{ inserted: number; updatedFundIds: number[] }> {
   const endDate = getLastWeekday();
 
+  // Auto-extend lookback window if the DB has fallen behind (e.g. after an outage).
+  // Caps at 30 days to avoid blowing the Vercel function timeout.
+  const lastNavRecord = await prisma.navPrice.findFirst({
+    orderBy: { navDate: 'desc' },
+    select: { navDate: true },
+  });
+  if (lastNavRecord) {
+    const daysBehind = Math.floor(
+      (endDate.getTime() - new Date(lastNavRecord.navDate).getTime()) / 86400000
+    );
+    if (daysBehind > recentDays) {
+      recentDays = Math.min(daysBehind + 2, 30);
+    }
+  }
+
   const recentStart = new Date(endDate);
   recentStart.setDate(recentStart.getDate() - recentDays);
 

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Noto_Sans_Thai, Inter } from 'next/font/google'
 import './globals.css'
 import { Navbar } from '@/components/layout/navbar'
@@ -26,11 +26,16 @@ export const metadata: Metadata = {
   description:
     'แพลตฟอร์มค้นหาข้อมูลกองทุนรวมไทย เปรียบเทียบผลตอบแทน ทำความเข้าใจความเสี่ยง และจัดอันดับกองทุนเพื่อการศึกษา ข้อมูลจาก SEC Thailand',
   keywords: ['กองทุนรวม', 'mutual fund', 'กองทุนไทย', 'NAV', 'เปรียบเทียบกองทุน', 'SEC Thailand'],
+  manifest: '/manifest.webmanifest',
   openGraph: {
     type: 'website',
     locale: 'th_TH',
     siteName: 'กองทุนไทย Research Dashboard',
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#1D4ED8',
 }
 
 export default function RootLayout({

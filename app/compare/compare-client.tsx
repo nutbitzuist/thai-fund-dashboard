@@ -3,7 +3,7 @@
 // app/compare/compare-client.tsx
 // Side-by-side fund comparison: Performance, Risk, AUM, Transaction Costs, Fund Info
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { X, Plus, Share2, Check, AlertTriangle, TrendingUp, TrendingDown, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -766,6 +766,111 @@ export function CompareClient() {
 
         </>
       )}
+
+      {/* ── Correlation Matrix ───────────────────────────────── */}
+      {(() => {
+        const fundsWithNav = fundData.filter((f) => navData[f.projId]?.length > 0)
+        if (fundsWithNav.length < 2) return null
+
+        // Find intersection of dates across all series
+        const dateSets = fundsWithNav.map((f) => new Set(navData[f.projId].map((p) => p.date)))
+        const commonDates = Array.from(
+          fundsWithNav.reduce<Set<string>>(
+            (intersection, f) => new Set([...intersection].filter((d) => dateSets[fundsWithNav.indexOf(f)].has(d))),
+            dateSets[0]
+          )
+        ).sort()
+
+        if (commonDates.length < 2) return null
+
+        // Align each series to common dates
+        const aligned: Record<string, number[]> = {}
+        for (const f of fundsWithNav) {
+          const byDate = new Map(navData[f.projId].map((p) => [p.date, p.normalized]))
+          aligned[f.projId] = commonDates.map((d) => byDate.get(d) ?? 0)
+        }
+
+        // Pearson correlation
+        function pearson(xs: number[], ys: number[]): number {
+          const n = xs.length
+          if (n === 0) return 0
+          const meanX = xs.reduce((a, b) => a + b, 0) / n
+          const meanY = ys.reduce((a, b) => a + b, 0) / n
+          let num = 0, denX = 0, denY = 0
+          for (let i = 0; i < n; i++) {
+            const dx = xs[i] - meanX
+            const dy = ys[i] - meanY
+            num += dx * dy
+            denX += dx * dx
+            denY += dy * dy
+          }
+          const den = Math.sqrt(denX * denY)
+          return den === 0 ? 0 : num / den
+        }
+
+        // Build correlation matrix
+        const matrix: number[][] = fundsWithNav.map((fi) =>
+          fundsWithNav.map((fj) => {
+            if (fi.projId === fj.projId) return 1
+            return pearson(aligned[fi.projId], aligned[fj.projId])
+          })
+        )
+
+        function cellStyle(r: number, isDiag: boolean): CSSProperties {
+          if (isDiag) return { backgroundColor: '#16A34A', color: '#fff' }
+          if (r >= 0.8) return { backgroundColor: `rgba(22,163,74,${0.15 + (r - 0.8) * 1.75})`, color: '#166534' }
+          if (r >= 0.5) return { backgroundColor: `rgba(234,179,8,${0.15 + (r - 0.5) * 0.67})`, color: '#854d0e' }
+          if (r >= 0) return { backgroundColor: 'rgba(241,245,249,0.6)', color: '#475569' }
+          return { backgroundColor: `rgba(239,68,68,${Math.min(0.5, Math.abs(r) * 0.7)})`, color: '#991b1b' }
+        }
+
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>ความสัมพันธ์ระหว่างกองทุน (Correlation Matrix)</CardTitle>
+              <p className="text-xs text-slate-400">ค่าใกล้ 1.0 = เคลื่อนไหวไปในทิศทางเดียวกัน, ค่าใกล้ 0 = ไม่สัมพันธ์กัน</p>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="text-xs border-separate border-spacing-1">
+                  <thead>
+                    <tr>
+                      <th className="w-24" />
+                      {fundsWithNav.map((f, j) => (
+                        <th key={j} className="text-center px-2 py-1 text-slate-500 font-medium whitespace-nowrap max-w-[80px] truncate">
+                          {f.projAbbrName ?? f.projId}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fundsWithNav.map((fi, i) => (
+                      <tr key={i}>
+                        <td className="text-right pr-2 py-1 text-slate-500 font-medium whitespace-nowrap max-w-[96px] truncate">
+                          {fi.projAbbrName ?? fi.projId}
+                        </td>
+                        {fundsWithNav.map((_, j) => {
+                          const r = matrix[i][j]
+                          const isDiag = i === j
+                          return (
+                            <td
+                              key={j}
+                              className="text-center tabular-nums rounded px-3 py-1.5 font-semibold"
+                              style={cellStyle(r, isDiag)}
+                            >
+                              {r.toFixed(2)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* ── Disclaimer ──────────────────────────────────────────── */}
       <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">

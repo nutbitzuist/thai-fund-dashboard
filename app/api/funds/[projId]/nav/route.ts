@@ -62,16 +62,18 @@ export async function GET(
         lastVal: true,
         buyPrice: true,
         sellPrice: true,
+        netAsset: true,
       },
     });
 
     if (!navPrices.length) return createErrorResponse('NAV_NOT_FOUND', 404);
 
-    const data = navPrices.map((n: { navDate: Date; lastVal: unknown; buyPrice: unknown; sellPrice: unknown }) => ({
+    const data = navPrices.map((n: { navDate: Date; lastVal: unknown; buyPrice: unknown; sellPrice: unknown; netAsset: unknown }) => ({
       date: n.navDate.toISOString().split('T')[0],
       nav: Number(n.lastVal),
       buyPrice: n.buyPrice != null ? Number(n.buyPrice) : null,
       sellPrice: n.sellPrice != null ? Number(n.sellPrice) : null,
+      netAsset: n.netAsset != null ? Number(n.netAsset) : null,
     }));
 
     // Calculate normalized series

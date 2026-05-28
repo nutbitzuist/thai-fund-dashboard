@@ -8,6 +8,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { NavChart } from '@/components/charts/nav-chart'
 import { NormalizedChart } from '@/components/charts/normalized-chart'
 import { DrawdownChart } from '@/components/charts/drawdown-chart'
+import { AumChart } from '@/components/charts/aum-chart'
+import { MonthlyHeatmap } from '@/components/charts/monthly-heatmap'
 import { calcDrawdownSeries } from '@/lib/calculations'
 import { formatPct, formatNav, getReturnColorClass, cn } from '@/lib/utils'
 
@@ -16,6 +18,7 @@ interface NavPoint {
   nav: number
   buyPrice?: number | null
   sellPrice?: number | null
+  netAsset?: number | null
 }
 
 interface NormalizedPoint {
@@ -29,7 +32,7 @@ interface FundChartsProps {
 }
 
 type Period = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'
-type ChartTab = 'nav' | 'normalized' | 'drawdown' | 'calculator'
+type ChartTab = 'nav' | 'normalized' | 'drawdown' | 'calculator' | 'aum' | 'heatmap'
 
 const PERIOD_LABELS: Record<Period, string> = {
   '1M': '1เดือน', '3M': '3เดือน', '6M': '6เดือน',
@@ -64,6 +67,8 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
   const [loading, setLoading] = useState(true)
   const [activeChart, setActiveChart] = useState<ChartTab>('nav')
   const [investAmount, setInvestAmount] = useState('100000')
+  const [maxNavData, setMaxNavData] = useState<NavPoint[]>([])
+  const [loadingMax, setLoadingMax] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -96,6 +101,21 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
     }
     load()
   }, [projId, period, defaultClassId])
+
+  useEffect(() => {
+    if (activeChart !== 'heatmap') return
+    if (maxNavData.length > 0) return
+    let cancelled = false
+    setLoadingMax(true)
+    const params = new URLSearchParams({ period: 'MAX' })
+    if (defaultClassId) params.set('classId', String(defaultClassId))
+    fetch(`/api/funds/${projId}/nav?${params}`)
+      .then((res) => res.json())
+      .then((json) => { if (!cancelled) setMaxNavData(json.data ?? []) })
+      .catch(() => { if (!cancelled) setMaxNavData([]) })
+      .finally(() => { if (!cancelled) setLoadingMax(false) })
+    return () => { cancelled = true }
+  }, [activeChart, projId, defaultClassId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Portfolio calculator derived values
   const calcResult = useCallback(() => {
@@ -165,6 +185,10 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
                 <TabsTrigger value="normalized" className="text-xs px-2.5">Normalized</TabsTrigger>
                 <TabsTrigger value="drawdown" className="text-xs px-2.5">Drawdown</TabsTrigger>
                 <TabsTrigger value="calculator" className="text-xs px-2.5">คำนวณ</TabsTrigger>
+                {navData.some((d) => d.netAsset != null) && (
+                  <TabsTrigger value="aum" className="text-xs px-2.5">AUM</TabsTrigger>
+                )}
+                <TabsTrigger value="heatmap" className="text-xs px-2.5">Heatmap</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -212,6 +236,24 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
                 period={period}
                 noData={navData.length < 2}
               />
+            )}
+            {activeChart === 'aum' && (
+              <>
+                <AumChart
+                  data={navData.map((d) => ({ date: d.date, aum: d.netAsset ?? null }))}
+                  height={320}
+                />
+                <p className="text-xs text-slate-400 mt-2">มูลค่าทรัพย์สินสุทธิ (AUM) รายวัน</p>
+              </>
+            )}
+            {activeChart === 'heatmap' && (
+              loadingMax ? (
+                <Skeleton className="h-[320px] w-full" />
+              ) : (
+                <MonthlyHeatmap
+                  data={maxNavData.map((d) => ({ date: d.date, nav: d.nav }))}
+                />
+              )
             )}
           </>
         )}

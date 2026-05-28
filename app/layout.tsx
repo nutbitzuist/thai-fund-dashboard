@@ -43,9 +43,6 @@ export default function RootLayout({
       lang="th"
       className={`${notoSansThai.variable} ${inter.variable} h-full antialiased`}
     >
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-      </head>
       <body
         className="min-h-full flex flex-col bg-slate-50"
         style={{ fontFamily: 'var(--font-noto-sans-thai), var(--font-inter), sans-serif' }}

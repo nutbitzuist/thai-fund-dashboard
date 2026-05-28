@@ -82,7 +82,7 @@ function RankBadge({ rank }: { rank: number }) {
 const METRIC_URL_MAP: Partial<Record<Tab, string>> = {
   '1Y': 'return1Y',
   'YTD': 'returnYTD',
-  '3M': 'return6M',
+  '3M': 'return3M',
   '1M': 'return1M',
 }
 

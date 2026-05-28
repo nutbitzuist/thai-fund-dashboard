@@ -1,12 +1,19 @@
 // app/funds/[slug]/page.tsx — Fund Detail Page
 // URL slug = projAbbrName (e.g. /funds/K-OIL)
 // Falls back to projId for backward-compat with old URLs (/funds/M0145_2549)
+//
+// Performance strategy:
+//  • generateStaticParams: pre-builds top 100 funds at deploy time (instant first load)
+//  • revalidate = 21600: all other funds use on-demand ISR, cached 6 h
+//  • Suspense streaming: main fund content renders first; SimilarFunds +
+//    CategoryStats render in their own Suspense boundaries so they never
+//    block the NAV / metrics from appearing
 
 import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock, TrendingUp, TrendingDown } from 'lucide-react'
 import prisma from '@/lib/db'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +22,8 @@ import { RiskBadge } from '@/components/metrics/risk-badge'
 import { MetricCard } from '@/components/metrics/metric-card'
 import { WatchlistButton } from '@/components/fund/watchlist-button'
 import { FundCharts } from './fund-charts'
+import { SimilarFunds, SimilarFundsSkeleton } from './similar-funds'
+import { CategoryStats, CategoryStatsSkeleton } from './category-stats'
 import {
   FUND_TYPE_LABELS,
   DIVIDEND_POLICY_LABELS,
@@ -39,10 +48,33 @@ interface Props {
   params: Promise<{ slug: string }>
 }
 
-// Fund data updates once daily. Cache fund detail HTML at Vercel's edge so
-// crawlers/users do not force a fresh origin render for every fund page view.
+// Cache fund detail HTML at Vercel's edge — fund data changes once daily.
 export const revalidate = 21600
-export const dynamic = 'force-static'
+
+// Pre-build the top 100 funds (by 1Y return) at deploy time so the first
+// visitor to popular fund pages never triggers an on-demand render.
+// Other funds fall through to on-demand ISR (rendered on first visit, then cached).
+export async function generateStaticParams() {
+  try {
+    const metrics = await prisma.fundMetric.findMany({
+      where: {
+        period: '1Y',
+        returnPct: { not: null },
+        fundClass: { isDefault: true },
+        fund: { fundStatus: { in: ['RG', 'SE'] } },
+      },
+      orderBy: { returnPct: 'desc' },
+      take: 100,
+      select: { fund: { select: { projAbbrName: true } } },
+    })
+    return metrics
+      .map((m) => m.fund.projAbbrName)
+      .filter((s): s is string => s != null && s.length > 0)
+      .map((slug) => ({ slug }))
+  } catch {
+    return []
+  }
+}
 
 // Resolve slug → fund row (projAbbrName case-insensitive, then projId fallback)
 async function getFundBySlug(slug: string) {
@@ -67,71 +99,6 @@ async function getFundBySlug(slug: string) {
       },
     },
   })
-}
-
-// Similar funds: same type, different fund, active, with 1Y metrics
-async function getSimilarFunds(fundType: string | null, excludeProjId: string) {
-  if (!fundType) return []
-  try {
-    const metrics = await prisma.fundMetric.findMany({
-      where: {
-        period: '1Y',
-        returnPct: { not: null },
-        fundClass: { isDefault: true },
-        fund: {
-          fundStatus: { in: ['RG', 'SE'] },
-          fundType,
-          projId: { not: excludeProjId },
-        },
-      },
-      orderBy: { returnPct: 'desc' },
-      take: 5,
-      select: {
-        returnPct: true,
-        fund: {
-          select: {
-            projId: true,
-            projAbbrName: true,
-            nameTh: true,
-            riskLevel: true,
-            amc: { select: { nameTh: true } },
-          },
-        },
-      },
-    })
-    return metrics.map((m) => ({
-      ...m.fund,
-      return1Y: m.returnPct != null ? Number(m.returnPct) : null,
-    }))
-  } catch {
-    return []
-  }
-}
-
-// Category stats + percentile rank (performance attribution — Feature 15)
-async function getCategoryStats(fundType: string | null) {
-  if (!fundType) return null
-  try {
-    const metrics = await prisma.fundMetric.findMany({
-      where: {
-        period: '1Y',
-        returnPct: { not: null },
-        fundClass: { isDefault: true },
-        fund: { fundStatus: { in: ['RG', 'SE'] }, fundType },
-      },
-      select: { returnPct: true },
-    })
-    if (metrics.length === 0) return null
-    const returns = metrics.map((m) => Number(m.returnPct)).filter((v) => !isNaN(v))
-    const avg = returns.reduce((a, b) => a + b, 0) / returns.length
-    const sorted = [...returns].sort((a, b) => a - b)
-    const median = sorted[Math.floor(sorted.length / 2)] ?? null
-    // Percentile rank: what % of funds does this fund beat?
-    // (computed later in the component once we know the fund's own return)
-    return { avg, median, count: returns.length, sorted }
-  } catch {
-    return null
-  }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -172,7 +139,6 @@ export default async function FundDetailPage({ params }: Props) {
   if (!fund) notFound()
 
   // Canonical redirect: if accessed by old projId URL and fund has a projAbbrName
-  // e.g. /funds/M0145_2549 → /funds/K-OIL (301 implicit via redirect())
   if (
     fund.projAbbrName &&
     slug !== fund.projAbbrName &&
@@ -183,11 +149,10 @@ export default async function FundDetailPage({ params }: Props) {
 
   const defaultClass = fund.fundClasses.find((c) => c.isDefault) ?? fund.fundClasses[0]
 
-  // Fetch similar funds, category stats, and AUM trend in parallel (non-blocking)
+  // Only fetch AUM-trend data here (lightweight) — similar funds + category stats
+  // are deferred to their own streaming Suspense components below.
   const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-  const [similarFunds, categoryStats, oldNavRecord, latestMarketNavRecord] = await Promise.all([
-    getSimilarFunds(fund.fundType, fund.projId),
-    getCategoryStats(fund.fundType),
+  const [oldNavRecord, latestMarketNavRecord] = await Promise.all([
     defaultClass?.id ? prisma.navPrice.findFirst({
       where: {
         fundClassId: defaultClass.id,
@@ -232,6 +197,7 @@ export default async function FundDetailPage({ params }: Props) {
   const hasLimitedHistory = maxNavCount < PERIOD_MIN_NAV_COUNT['1Y']
 
   const m1Y = metricsByPeriod['1Y']
+  const my1YReturn = m1Y?.returnPct != null ? Number(m1Y.returnPct) : null
   const compareUrl = `/compare?funds=${fund.projId}`
 
   return (
@@ -314,12 +280,12 @@ export default async function FundDetailPage({ params }: Props) {
                 )}
                 {fund.regisDate && (() => {
                   const ageYears = referenceDateMs != null
-                    ? Math.floor((referenceDateMs - new Date(fund.regisDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+                    ? Math.floor((referenceDateMs - new Date(fund.regisDate!).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
                     : 0;
                   return (
                     <span>
                       <span className="text-slate-400">จัดตั้ง:</span>{' '}
-                      {formatDateTh(fund.regisDate)}
+                      {formatDateTh(fund.regisDate!)}
                       <span className="text-slate-400 ml-1">({ageYears} ปี)</span>
                     </span>
                   );
@@ -329,7 +295,6 @@ export default async function FundDetailPage({ params }: Props) {
 
             {/* NAV Box */}
             <div className="bg-slate-50 rounded-xl p-4 min-w-[220px] text-right lg:text-center border border-slate-200 space-y-2">
-              {/* NAV + daily change */}
               <div>
                 <p className="text-xs text-slate-500 mb-1">NAV ล่าสุด</p>
                 <p className="text-3xl font-bold text-slate-900 tabular-nums">
@@ -346,7 +311,7 @@ export default async function FundDetailPage({ params }: Props) {
                 )}
               </div>
 
-              {/* Buy / Sell prices + transaction cost */}
+              {/* Buy / Sell prices */}
               {latestNavRecord?.buyPrice && latestNavRecord?.sellPrice && (() => {
                 const buy = Number(latestNavRecord.buyPrice);
                 const sell = Number(latestNavRecord.sellPrice);
@@ -484,7 +449,6 @@ export default async function FundDetailPage({ params }: Props) {
       <section>
         <h2 className="text-lg font-bold text-slate-900 mb-4">กราฟ NAV ย้อนหลัง</h2>
         <Suspense fallback={<div className="h-64 bg-slate-100 animate-pulse rounded-xl" />}>
-          {/* Pass actual projId (not slug) — API uses projId for DB lookups */}
           <FundCharts projId={fund.projId} defaultClassId={defaultClass?.id} />
         </Suspense>
       </section>
@@ -560,104 +524,20 @@ export default async function FundDetailPage({ params }: Props) {
         </Card>
       </section>
 
-      {/* Category Comparison + Percentile Rank (Features 12, 15) */}
-      {categoryStats && fund.fundType && (
-        <section>
-          <h2 className="text-lg font-bold text-slate-900 mb-4">
-            เปรียบเทียบกับกองทุนประเภทเดียวกัน
-          </h2>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-sm text-slate-500 mb-3">
-                {FUND_TYPE_LABELS[fund.fundType] ?? fund.fundType} — จากข้อมูล {categoryStats.count.toLocaleString('th-TH')} กองทุน (ผลตอบแทน 1 ปี)
-              </p>
-              <div className="grid grid-cols-3 gap-4 mb-3">
-                <div className="text-center">
-                  <p className="text-xs text-slate-400 mb-1">กองทุนนี้</p>
-                  <p className={cn('text-xl font-bold tabular-nums', getReturnColorClass(m1Y?.returnPct != null ? Number(m1Y.returnPct) : null))}>
-                    {m1Y?.returnPct != null ? formatPct(Number(m1Y.returnPct)) : '-'}
-                  </p>
-                </div>
-                <div className="text-center border-x border-slate-100">
-                  <p className="text-xs text-slate-400 mb-1">ค่าเฉลี่ยประเภท</p>
-                  <p className={cn('text-xl font-bold tabular-nums', getReturnColorClass(categoryStats.avg))}>
-                    {formatPct(categoryStats.avg)}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-slate-400 mb-1">มัธยฐาน</p>
-                  <p className={cn('text-xl font-bold tabular-nums', getReturnColorClass(categoryStats.median))}>
-                    {categoryStats.median != null ? formatPct(categoryStats.median) : '-'}
-                  </p>
-                </div>
-              </div>
-              {m1Y?.returnPct != null && (() => {
-                const myReturn = Number(m1Y.returnPct)
-                const diff = myReturn - categoryStats.avg
-                // Percentile: count funds this fund beats
-                const beatCount = categoryStats.sorted.filter((r) => r < myReturn).length
-                const percentile = Math.round((beatCount / categoryStats.sorted.length) * 100)
-                const isTop = percentile >= 75
-                const isBottom = percentile < 25
-                return (
-                  <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <p className={cn('text-sm font-medium flex items-center gap-1', diff >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                      {diff >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                      {diff >= 0 ? 'สูงกว่า' : 'ต่ำกว่า'} ค่าเฉลี่ย {Math.abs(diff).toFixed(2)}%
-                    </p>
-                    <div className={cn(
-                      'text-xs font-semibold rounded-full px-3 py-1.5',
-                      isTop ? 'bg-emerald-100 text-emerald-700' :
-                      isBottom ? 'bg-red-100 text-red-700' :
-                      'bg-slate-100 text-slate-600'
-                    )}>
-                      {isTop ? '🏆 ' : isBottom ? '⚠️ ' : ''}
-                      Top {100 - percentile}% ของกองทุนประเภทนี้ (เปอร์เซ็นไทล์ที่ {percentile})
-                    </div>
-                  </div>
-                )
-              })()}
-            </CardContent>
-          </Card>
-        </section>
+      {/* ── Streamed sections — render in parallel, don't block above content ── */}
+
+      {/* Category Comparison + Percentile Rank */}
+      {fund.fundType && (
+        <Suspense fallback={<CategoryStatsSkeleton />}>
+          <CategoryStats fundType={fund.fundType} myReturn1Y={my1YReturn} />
+        </Suspense>
       )}
 
-      {/* Similar Funds (Feature 5) */}
-      {similarFunds.length > 0 && fund.fundType && (
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-slate-900">
-              กองทุนประเภทเดียวกัน — {FUND_TYPE_LABELS[fund.fundType] ?? fund.fundType} ผลตอบแทนสูงสุด
-            </h2>
-            <Link
-              href={`/funds/type/${fund.fundType.toLowerCase()}`}
-              className="text-sm text-blue-700 hover:underline flex items-center gap-1"
-            >
-              ดูทั้งหมด <ChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {similarFunds.map((sf) => (
-              <Link
-                key={sf.projId}
-                href={fundUrl(sf)}
-                className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 hover:border-blue-200 hover:shadow-sm transition-all group"
-              >
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-mono font-bold text-blue-700">{sf.projAbbrName ?? sf.projId}</span>
-                  <p className="text-sm text-slate-800 truncate mt-0.5 group-hover:text-blue-700">{sf.nameTh}</p>
-                  <p className="text-xs text-slate-400">{sf.amc?.nameTh}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs text-slate-400">1Y</p>
-                  <p className={cn('text-sm font-bold tabular-nums', getReturnColorClass(sf.return1Y))}>
-                    {sf.return1Y != null ? formatPct(sf.return1Y) : '-'}
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
+      {/* Similar Funds */}
+      {fund.fundType && (
+        <Suspense fallback={<SimilarFundsSkeleton />}>
+          <SimilarFunds fundType={fund.fundType} excludeProjId={fund.projId} />
+        </Suspense>
       )}
 
       {/* Disclaimer */}

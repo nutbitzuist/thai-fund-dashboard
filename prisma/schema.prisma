@@ -54,6 +54,9 @@ model Fund {
   @@index([fundType])
   @@index([riskLevel])
   @@index([fundStatus])
+  // Compound indexes for filtered list queries
+  @@index([fundStatus, fundType])   // /api/funds?fundType=EQ (most common filter)
+  @@index([fundStatus, amcId])      // /api/funds?amcId=X (AMC fund list)
   @@map("fund")
 }
 
@@ -103,6 +106,9 @@ model NavPrice {
   @@index([fundId])
   @@index([fundClassId])
   @@index([navDate])
+  // Compound indexes for common query patterns
+  @@index([fundClassId, navDate(sort: Desc)]) // "latest 2 NAVs for a class" — movers + detail page
+  @@index([navDate, fundClassId])              // "all fund NAVs on a given date" — movers query
   @@map("nav_price")
 }
 
@@ -130,6 +136,12 @@ model FundMetric {
   @@index([fundId])
   @@index([fundClassId])
   @@index([period])
+  // Compound indexes — critical for rankings (period filter + metric sort)
+  @@index([period, returnPct(sort: Desc)])          // rankings by return (most common)
+  @@index([period, annualizedVolatilityPct])         // rankings by volatility
+  @@index([period, maxDrawdownPct])                  // rankings by drawdown
+  @@index([period, sharpeRatio])                     // rankings by Sharpe
+  @@index([fundClassId, period])                     // per-fund metric lookup on detail page
   @@map("fund_metric")
 }
 

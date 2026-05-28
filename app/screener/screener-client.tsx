@@ -79,7 +79,7 @@ export function ScreenerClient() {
   const [amcId, setAmcId] = useState(searchParams.get('amcId') ?? '')
   const [fundType, setFundType] = useState(searchParams.get('fundType') ?? '')
   const [riskLevel, setRiskLevel] = useState(searchParams.get('riskLevel') ?? '')
-  const [dividendPolicy, setDividendPolicy] = useState(searchParams.get('dividendPolicy') ?? '')
+  const [dividendPolicy] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>((searchParams.get('sortBy') as SortKey) ?? 'return1Y')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>((searchParams.get('sortDir') as 'asc' | 'desc') ?? 'desc')
   const [page, setPage] = useState(parseInt(searchParams.get('page') ?? '1'))
@@ -152,7 +152,7 @@ export function ScreenerClient() {
   }
 
   const handleReset = () => {
-    setQ(''); setAmcId(''); setFundType(''); setRiskLevel(''); setDividendPolicy('')
+    setQ(''); setAmcId(''); setFundType(''); setRiskLevel('')
     setSortBy('return1Y'); setSortDir('desc'); setPage(1); setActivePreset(null)
   }
 
@@ -191,8 +191,8 @@ export function ScreenerClient() {
   // Check if current filters match profile
   const isProfileMatch = profileGoal !== null && (
     (profileGoal === 'tax_saving' && fundType === 'RMF') ||
-    (profileGoal === 'income' && fundType === 'FI') ||
-    (profileGoal === 'growth' && (fundType === 'EQ' || fundType === 'FIF' || fundType === 'BA'))
+    (profileGoal === 'income'     && fundType === 'FI')  ||
+    (profileGoal === 'growth'     && (fundType === 'EQ' || fundType === 'FIF' || fundType === 'BA'))
   )
 
   const isLoading = status === 'loading'
@@ -305,19 +305,6 @@ export function ScreenerClient() {
                   {Object.entries(RISK_LEVEL_LABELS).map(([k, v]) => (
                     <SelectItem key={k} value={k}>{k} - {v}</SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Dividend policy */}
-            <div>
-              <label className="block text-xs text-slate-500 mb-1.5">นโยบายปันผล</label>
-              <Select value={dividendPolicy || 'all'} onValueChange={(v) => { setDividendPolicy(v === 'all' ? '' : v); setPage(1) }}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="ทั้งหมด" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทั้งหมด</SelectItem>
-                  <SelectItem value="PAID">จ่ายปันผล</SelectItem>
-                  <SelectItem value="ACCUMULATE">สะสมมูลค่า</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -63,7 +63,6 @@ export function profileToScreenerUrl(p: InvestorProfile): string {
     params.set('sortDir', 'desc')
   } else if (p.goal === 'income') {
     params.set('fundType', 'FI')
-    params.set('dividendPolicy', 'PAID')
     params.set('sortBy', 'return1Y')
     params.set('sortDir', 'desc')
   }

@@ -1,4 +1,4 @@
-// GET /api/twin?projId=KFFLEX → find same-type funds with better 1Y return
+// GET /api/twin?projId=KFFLEX&period=1Y → find same-type funds with better return
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -10,19 +10,20 @@ export const dynamic = 'force-dynamic';
 
 const QuerySchema = z.object({
   projId: z.string().max(50),
+  period: z.enum(['1M', '3M', '6M', '1Y']).optional().default('1Y'),
 });
 
 export async function GET(req: NextRequest) {
   const parsed = QuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid params' }, { status: 400 });
 
-  const { projId } = parsed.data;
+  const { projId, period } = parsed.data;
 
   try {
-    // Look up the target fund and its 1Y metric
+    // Look up the target fund and its metric for the requested period
     const targetMetric = await prisma.fundMetric.findFirst({
       where: {
-        period: '1Y',
+        period,
         fundClass: { isDefault: true },
         fund: { projId },
       },
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!targetMetric) {
-      return NextResponse.json({ error: 'ไม่พบข้อมูลกองทุนหรือผลตอบแทน 1 ปี' }, { status: 404 });
+      return NextResponse.json({ error: `ไม่พบข้อมูลกองทุนหรือผลตอบแทน ${period}` }, { status: 404 });
     }
 
     const { fund: target } = targetMetric;
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
 
     const alternatives = await prisma.fundMetric.findMany({
       where: {
-        period: '1Y',
+        period,
         returnPct: targetReturn != null ? { not: null, gt: targetReturn } : { not: null },
         fundClass: { isDefault: true },
         fund: {
@@ -86,13 +87,14 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
+        period,
         target: {
           projId: target.projId,
           projAbbrName: target.projAbbrName,
           nameTh: target.nameTh,
           fundType: target.fundType,
           riskLevel: target.riskLevel,
-          return1Y: targetReturn,
+          returnPct: targetReturn,
           amcName: target.amc?.nameTh ?? null,
         },
         alternatives: alternatives.map((a) => ({
@@ -101,7 +103,7 @@ export async function GET(req: NextRequest) {
           nameTh: a.fund.nameTh,
           fundType: a.fund.fundType,
           riskLevel: a.fund.riskLevel,
-          return1Y: a.returnPct != null ? Number(a.returnPct) : null,
+          returnPct: a.returnPct != null ? Number(a.returnPct) : null,
           gainPct: a.returnPct != null && targetReturn != null ? Number(a.returnPct) - targetReturn : null,
           amcName: a.fund.amc?.nameTh ?? null,
         })),

@@ -68,6 +68,15 @@ async function getAmcStats(): Promise<AmcStats[]> {
   }).filter((a) => a.fundCount > 0)
 }
 
+function shortAmcName(name: string): string {
+  return name
+    .replace('บริษัทหลักทรัพย์จัดการกองทุน', 'บลจ.')
+    .replace(/จำกัด|\(มหาชน\)|บมจ\.|บจก\./g, '')
+    .replace(/,/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export default async function AmcsPage() {
   const amcs = await getAmcStats()
 
@@ -98,7 +107,7 @@ export default async function AmcsPage() {
 
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-slate-900 truncate group-hover:text-blue-700 transition-colors">
-                {amc.nameTh}
+                {shortAmcName(amc.nameTh)}
               </p>
               {amc.nameEn && (
                 <p className="text-xs text-slate-400 truncate">{amc.nameEn}</p>

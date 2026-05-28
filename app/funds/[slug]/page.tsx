@@ -13,7 +13,7 @@ import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock, TrendingUp, TrendingDown, FileText } from 'lucide-react'
 import prisma from '@/lib/db'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -273,6 +273,16 @@ export default async function FundDetailPage({ params }: Props) {
               fundType: fund.fundType,
             }}
           />
+          <a
+            href={`https://secdocumentstorage.blob.core.windows.net/fundfactsheet/${fund.projId}.pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="outline" size="sm">
+              <FileText className="h-4 w-4 mr-1.5" />
+              หนังสือชี้ชวน
+            </Button>
+          </a>
           <Link href={compareUrl}>
             <Button variant="outline" size="sm">
               <GitCompare className="h-4 w-4 mr-1.5" />
@@ -602,7 +612,7 @@ export default async function FundDetailPage({ params }: Props) {
         ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต
         กรุณาอ่าน{' '}
         <a
-          href="https://www.sec.or.th/"
+          href={`https://secdocumentstorage.blob.core.windows.net/fundfactsheet/${fund.projId}.pdf`}
           target="_blank"
           rel="noopener noreferrer"
           className="underline inline-flex items-center gap-0.5"

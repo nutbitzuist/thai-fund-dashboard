@@ -40,7 +40,7 @@ const RankingSchema = z.object({
   sort: z.enum(['asc', 'desc']).default('desc'),
   fundType: z.string().max(50).optional(),
   riskLevel: z.coerce.number().int().min(1).max(8).optional(),
-  amcId: z.coerce.number().int().positive().optional(),
+  amcIds: z.string().optional(), // comma-separated list, e.g. "1,3,7"
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -77,10 +77,14 @@ export async function GET(req: NextRequest) {
   );
   if (!parsed.success) return createErrorResponse('VALIDATION_ERROR', 400);
 
-  const { metric, sort, fundType, riskLevel, amcId, page, limit } = parsed.data;
+  const { metric, sort, fundType, riskLevel, amcIds: amcIdsStr, page, limit } = parsed.data;
   const period = METRIC_PERIOD_MAP[metric];
   const metricField = METRIC_FIELD_MAP[metric];
   const skip = (page - 1) * limit;
+
+  const amcIdList = amcIdsStr
+    ? amcIdsStr.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0)
+    : [];
 
   try {
     // Get funds with metrics, applying fund-level filters
@@ -89,7 +93,8 @@ export async function GET(req: NextRequest) {
     };
     if (fundType) fundWhere.fundType = fundType;
     if (riskLevel) fundWhere.riskLevel = riskLevel;
-    if (amcId) fundWhere.amcId = amcId;
+    if (amcIdList.length === 1) fundWhere.amcId = amcIdList[0];
+    else if (amcIdList.length > 1) fundWhere.amcId = { in: amcIdList };
 
     // Fetch latest metrics for the relevant period
     // Join: FundMetric → FundClass (isDefault) → Fund (with filters)

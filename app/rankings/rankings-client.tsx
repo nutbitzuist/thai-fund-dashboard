@@ -66,6 +66,7 @@ interface AmcRow {
 interface AmcOption { id: number; nameTh: string; nameEn?: string | null }
 
 type Metric = 'return1D' | 'return1Y' | 'return1M' | 'return3Y' | 'return6M' | 'returnYTD' | 'volatility1Y' | 'maxDrawdown1Y' | 'sharpe1Y'
+
 type SortDir = 'asc' | 'desc'
 type ViewMode = 'funds' | 'amcs'
 type AmcSortBy = 'avgReturn' | 'medianReturn' | 'fundCount' | 'bestReturn' | 'avgSharpe' | 'avgVolatility'
@@ -129,12 +130,14 @@ function SortHeader({ label, colMetric, activeMetric, sortDir, onClick, classNam
   )
 }
 
-// ── AMC searchable dropdown ───────────────────────────────────────────────────
+// ── AMC multi-select dropdown ─────────────────────────────────────────────────
+
+const SHORT_AMC_RE = /บริษัทหลักทรัพย์จัดการกองทุน|จำกัด|บมจ\.|บจก\.|,|\(มหาชน\)/g
 
 interface AmcPickerProps {
   amcs: AmcOption[]
-  value: number | null
-  onChange: (id: number | null) => void
+  value: number[]
+  onChange: (ids: number[]) => void
 }
 
 function AmcPicker({ amcs, value, onChange }: AmcPickerProps) {
@@ -142,9 +145,8 @@ function AmcPicker({ amcs, value, onChange }: AmcPickerProps) {
   const [q, setQ] = useState('')
   const ref = useRef<HTMLDivElement>(null)
 
-  const selected = amcs.find((a) => a.id === value)
-  const filtered = amcs.filter((a) =>
-    !q || a.nameTh.toLowerCase().includes(q.toLowerCase()) || (a.nameEn ?? '').toLowerCase().includes(q.toLowerCase())
+  const filtered = amcs.filter(
+    (a) => !q || a.nameTh.toLowerCase().includes(q.toLowerCase()) || (a.nameEn ?? '').toLowerCase().includes(q.toLowerCase())
   )
 
   useEffect(() => {
@@ -155,6 +157,18 @@ function AmcPicker({ amcs, value, onChange }: AmcPickerProps) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  const toggle = (id: number) =>
+    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id])
+
+  const buttonLabel = () => {
+    if (value.length === 0) return 'บลจ. ทั้งหมด'
+    if (value.length === 1) {
+      const a = amcs.find((a) => a.id === value[0])
+      return a ? a.nameTh.replace(SHORT_AMC_RE, '').trim() : 'บลจ. 1 แห่ง'
+    }
+    return `บลจ. (${value.length})`
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -162,23 +176,24 @@ function AmcPicker({ amcs, value, onChange }: AmcPickerProps) {
         onClick={() => setOpen((v) => !v)}
         className={cn(
           'inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-sm transition-colors',
-          value
+          value.length > 0
             ? 'border-blue-300 bg-blue-50 text-blue-700 font-medium'
             : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
         )}
       >
         <Building2 className="h-3.5 w-3.5 shrink-0" />
-        <span className="max-w-[140px] truncate">
-          {selected ? selected.nameTh.replace(/บริษัทหลักทรัพย์จัดการกองทุน|จำกัด|บมจ\.|บจก\.|,|\(มหาชน\)/g, '').trim() : 'บลจ. ทั้งหมด'}
-        </span>
-        {value && (
-          <X className="h-3 w-3 ml-0.5 shrink-0 opacity-60 hover:opacity-100" onClick={(e) => { e.stopPropagation(); onChange(null) }} />
+        <span className="max-w-[160px] truncate">{buttonLabel()}</span>
+        {value.length > 0 && (
+          <X
+            className="h-3 w-3 ml-0.5 shrink-0 opacity-60 hover:opacity-100"
+            onClick={(e) => { e.stopPropagation(); onChange([]) }}
+          />
         )}
       </button>
 
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 w-72 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
-          <div className="p-2 border-b border-slate-100">
+          <div className="p-2 border-b border-slate-100 space-y-1.5">
             <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50">
               <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
               <input
@@ -190,26 +205,51 @@ function AmcPicker({ amcs, value, onChange }: AmcPickerProps) {
               />
               {q && <X className="h-3 w-3 text-slate-400 cursor-pointer" onClick={() => setQ('')} />}
             </div>
+            {value.length > 0 && (
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs text-blue-700 font-medium">เลือก {value.length} บลจ.</span>
+                <button
+                  className="text-xs text-slate-500 hover:text-red-600 transition-colors"
+                  onClick={() => onChange([])}
+                >
+                  ล้างทั้งหมด
+                </button>
+              </div>
+            )}
           </div>
-          <div className="max-h-60 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto">
             <button
-              className={cn('w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-colors', !value && 'bg-blue-50 text-blue-700 font-medium')}
-              onClick={() => { onChange(null); setOpen(false); setQ('') }}
+              className={cn('w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-colors', value.length === 0 && 'bg-blue-50 text-blue-700 font-medium')}
+              onClick={() => { onChange([]); setOpen(false); setQ('') }}
             >
               ทุก บลจ.
             </button>
-            {filtered.map((a) => (
-              <button
-                key={a.id}
-                className={cn('w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-colors', value === a.id && 'bg-blue-50 text-blue-700 font-medium')}
-                onClick={() => { onChange(a.id); setOpen(false); setQ('') }}
-              >
-                <span className="block leading-tight">
-                  {a.nameTh.replace(/บริษัทหลักทรัพย์จัดการกองทุน|จำกัด|บมจ\.|บจก\.|,|\(มหาชน\)/g, '').trim()}
-                </span>
-                {a.nameEn && <span className="block text-xs text-slate-400 mt-0.5">{a.nameEn}</span>}
-              </button>
-            ))}
+            {filtered.map((a) => {
+              const selected = value.includes(a.id)
+              return (
+                <button
+                  key={a.id}
+                  className={cn(
+                    'w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-colors flex items-start gap-2',
+                    selected && 'bg-blue-50'
+                  )}
+                  onClick={() => toggle(a.id)}
+                >
+                  <span className={cn(
+                    'mt-0.5 flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center text-[10px]',
+                    selected ? 'bg-blue-700 border-blue-700 text-white' : 'border-slate-300'
+                  )}>
+                    {selected && '✓'}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className={cn('block leading-tight', selected && 'text-blue-700 font-medium')}>
+                      {a.nameTh.replace(SHORT_AMC_RE, '').trim()}
+                    </span>
+                    {a.nameEn && <span className="block text-xs text-slate-400 mt-0.5">{a.nameEn}</span>}
+                  </span>
+                </button>
+              )
+            })}
             {filtered.length === 0 && <p className="px-3 py-4 text-sm text-slate-400 text-center">ไม่พบ บลจ. ที่ค้นหา</p>}
           </div>
         </div>
@@ -274,7 +314,9 @@ export function RankingsClient() {
   const [sortDir, setSortDir] = useState<SortDir>((searchParams.get('sort') as SortDir) ?? 'desc')
   const [fundType, setFundType] = useState(searchParams.get('fundType') ?? '')
   const [riskLevel, setRiskLevel] = useState(searchParams.get('riskLevel') ?? '')
-  const [amcId, setAmcId] = useState<number | null>(searchParams.get('amcId') ? Number(searchParams.get('amcId')) : null)
+  const [amcIds, setAmcIds] = useState<number[]>(
+    searchParams.get('amcIds') ? searchParams.get('amcIds')!.split(',').map(Number).filter(Boolean) : []
+  )
   const [page, setPage] = useState(Number(searchParams.get('page') ?? 1))
 
   // AMC leaderboard state
@@ -296,7 +338,7 @@ export function RankingsClient() {
   const pushUrl = useCallback((overrides: Record<string, string | number | null>) => {
     const current = {
       view, metric, sort: sortDir, fundType, riskLevel,
-      amcId: amcId ? String(amcId) : null,
+      amcIds: amcIds.length > 0 ? amcIds.join(',') : null,
       page: page > 1 ? String(page) : null,
       amcPeriod: view === 'amcs' ? amcPeriod : null,
       amcSortBy: view === 'amcs' ? amcSortBy : null,
@@ -310,7 +352,7 @@ export function RankingsClient() {
       if (k === 'page' && v && v !== '1') params.set(k, String(v))
     }
     router.replace(`/rankings?${params.toString()}`, { scroll: false })
-  }, [router, view, metric, sortDir, fundType, riskLevel, amcId, page, amcPeriod, amcSortBy, amcSortDir, amcFundType])
+  }, [router, view, metric, sortDir, fundType, riskLevel, amcIds, page, amcPeriod, amcSortBy, amcSortDir, amcFundType])
 
   // ── Load AMC list once ────────────────────────────────────────────
   useEffect(() => {
@@ -324,7 +366,7 @@ export function RankingsClient() {
       if (metric === 'return1D') {
         const params = new URLSearchParams({ limit: '25' })
         if (fundType) params.set('fundType', fundType)
-        if (amcId) params.set('amcId', String(amcId))
+        if (amcIds.length > 0) params.set('amcIds', amcIds.join(','))
         const res = await fetch(`/api/movers?${params}`)
         const json = await res.json()
         const movers: MoverRow[] = sortDir === 'desc' ? (json.gainers ?? []) : (json.losers ?? [])
@@ -339,14 +381,14 @@ export function RankingsClient() {
         const params = new URLSearchParams({ metric, sort: sortDir, page: String(page), limit: '25' })
         if (fundType) params.set('fundType', fundType)
         if (riskLevel) params.set('riskLevel', riskLevel)
-        if (amcId) params.set('amcId', String(amcId))
+        if (amcIds.length > 0) params.set('amcIds', amcIds.join(','))
         const res = await fetch(`/api/rankings?${params}`)
         const json = await res.json()
         setData(json.data ?? [])
         setPagination(json.pagination ?? { total: 0, totalPages: 0, page: 1 })
       }
     } catch { setData([]) } finally { setLoading(false) }
-  }, [metric, sortDir, fundType, riskLevel, amcId, page])
+  }, [metric, sortDir, fundType, riskLevel, amcIds, page])
 
   // ── Fetch AMC leaderboard ─────────────────────────────────────────
   const fetchAmcRankings = useCallback(async () => {
@@ -393,9 +435,9 @@ export function RankingsClient() {
     pushUrl({ riskLevel: rl || null, page: null })
   }
 
-  const changeAmcId = (id: number | null) => {
-    setAmcId(id); setPage(1)
-    pushUrl({ amcId: id ? String(id) : null, page: null })
+  const changeAmcIds = (ids: number[]) => {
+    setAmcIds(ids); setPage(1)
+    pushUrl({ amcIds: ids.length > 0 ? ids.join(',') : null, page: null })
   }
 
   const changePage = (p: number) => { setPage(p); pushUrl({ page: p > 1 ? String(p) : null }) }
@@ -412,8 +454,8 @@ export function RankingsClient() {
 
   // ── AMC view — drill into funds ───────────────────────────────────
   const drillIntoAmc = (id: number) => {
-    setView('funds'); setAmcId(id); setPage(1)
-    pushUrl({ view: 'funds', amcId: String(id), page: null })
+    setView('funds'); setAmcIds([id]); setPage(1)
+    pushUrl({ view: 'funds', amcIds: String(id), page: null })
   }
 
   const handleCopyUrl = () => {
@@ -447,7 +489,7 @@ export function RankingsClient() {
   const shortAmc = (name: string) =>
     name.replace(/บริษัทหลักทรัพย์จัดการกองทุน|จำกัด|บมจ\.|บจก\.|,|\(มหาชน\)/g, '').trim()
 
-  const selectedAmcName = amcId ? amcList.find((a) => a.id === amcId)?.nameTh : null
+  const selectedAmcNames = amcIds.map((id) => amcList.find((a) => a.id === id)?.nameTh).filter(Boolean) as string[]
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -593,8 +635,8 @@ export function RankingsClient() {
 
             <div className="h-5 w-px bg-slate-200" />
 
-            {/* AMC picker */}
-            <AmcPicker amcs={amcList} value={amcId} onChange={changeAmcId} />
+            {/* AMC multi-picker */}
+            <AmcPicker amcs={amcList} value={amcIds} onChange={changeAmcIds} />
 
             {/* Utility buttons */}
             <div className="flex gap-2 ml-auto">
@@ -618,15 +660,17 @@ export function RankingsClient() {
           </div>
 
           {/* Active filters summary */}
-          {(fundType || riskLevel || amcId || metric !== 'return1Y') && (
+          {(fundType || riskLevel || amcIds.length > 0 || metric !== 'return1Y') && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <span>กรอง:</span>
               {metric !== 'return1Y' && <Badge variant="secondary">{getMetricLabel(metric)}</Badge>}
               {fundType && <Badge variant="secondary">{FUND_TYPE_LABELS[fundType] ?? fundType}</Badge>}
               {riskLevel && <Badge variant="secondary">ความเสี่ยงระดับ {riskLevel}</Badge>}
-              {selectedAmcName && <Badge variant="secondary" className="max-w-[180px] truncate">{shortAmc(selectedAmcName)}</Badge>}
+              {selectedAmcNames.map((name) => (
+                <Badge key={name} variant="secondary" className="max-w-[180px] truncate">{shortAmc(name)}</Badge>
+              ))}
               <button
-                onClick={() => { setFundType(''); setRiskLevel(''); setAmcId(null); setMetric('return1Y'); setSortDir('desc'); setPage(1); pushUrl({ fundType: null, riskLevel: null, amcId: null, metric: 'return1Y', sort: 'desc', page: null }) }}
+                onClick={() => { setFundType(''); setRiskLevel(''); setAmcIds([]); setMetric('return1Y'); setSortDir('desc'); setPage(1); pushUrl({ fundType: null, riskLevel: null, amcIds: null, metric: 'return1Y', sort: 'desc', page: null }) }}
                 className="text-blue-700 hover:underline"
               >
                 ล้างทั้งหมด
@@ -643,8 +687,8 @@ export function RankingsClient() {
                   : 'วันนี้ — เรียงตามผลตอบแทน 1 วัน'
               )}
             </p>
-            {amcId && (
-              <button onClick={() => drillIntoAmc(amcId)} className="text-xs text-blue-700 hover:underline">
+            {amcIds.length === 1 && (
+              <button onClick={() => drillIntoAmc(amcIds[0])} className="text-xs text-blue-700 hover:underline">
                 ดูอันดับ บลจ. →
               </button>
             )}

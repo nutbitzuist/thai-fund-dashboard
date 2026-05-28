@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 
 const MoversSchema = z.object({
   fundType: z.string().max(50).optional(),
+  amcIds: z.string().optional(), // comma-separated AMC IDs
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 
@@ -39,7 +40,10 @@ export async function GET(req: NextRequest) {
   const parsed = MoversSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid params' }, { status: 400 });
 
-  const { fundType, limit } = parsed.data;
+  const { fundType, amcIds: amcIdsStr, limit } = parsed.data;
+  const amcIdList = amcIdsStr
+    ? amcIdsStr.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0)
+    : [];
 
   try {
     // Get the two most recent distinct NAV dates in one query
@@ -51,10 +55,12 @@ export async function GET(req: NextRequest) {
 
     const [latestDate, prevDate] = [recentDates[0].navDate, recentDates[1].navDate];
 
-    const fundWhere = {
+    const fundWhere: Record<string, unknown> = {
       fundStatus: { in: ['RG', 'SE'] },
       ...(fundType && { fundType }),
     };
+    if (amcIdList.length === 1) fundWhere.amcId = amcIdList[0];
+    else if (amcIdList.length > 1) fundWhere.amcId = { in: amcIdList };
 
     // Fetch today's and previous day's NAVs (default class only, active funds only)
     const [todayNavs, prevNavs] = await Promise.all([

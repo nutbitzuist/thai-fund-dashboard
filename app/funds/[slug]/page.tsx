@@ -280,7 +280,7 @@ export default async function FundDetailPage({ params }: Props) {
           >
             <Button variant="outline" size="sm">
               <FileText className="h-4 w-4 mr-1.5" />
-              หนังสือชี้ชวน
+              Fund Fact Sheet
             </Button>
           </a>
           <Link href={compareUrl}>
@@ -617,9 +617,9 @@ export default async function FundDetailPage({ params }: Props) {
           rel="noopener noreferrer"
           className="underline inline-flex items-center gap-0.5"
         >
-          หนังสือชี้ชวน <ExternalLink className="h-3 w-3" />
+          Fund Fact Sheet <ExternalLink className="h-3 w-3" />
         </a>{' '}
-        ก่อนตัดสินใจลงทุน
+        (อัปเดตรายเดือนโดย บลจ.) ก่อนตัดสินใจลงทุน
       </div>
     </div>
   )

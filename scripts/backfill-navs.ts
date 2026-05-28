@@ -24,6 +24,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as https from 'https';
 
 // ── Inline minimal versions of lib utilities ──
 // (avoids Next.js module resolution issues when running outside the app)
@@ -357,8 +358,55 @@ async function main() {
   const navApiKey = process.env.SEC_NAV_API_KEY;
   if (!navApiKey) throw new Error('SEC_NAV_API_KEY is not set. Run: source .env.local && DATABASE_URL="$DATABASE_URL" SEC_NAV_API_KEY="$SEC_NAV_API_KEY" npx tsx scripts/backfill-navs.ts');
 
-  const adapter = new PrismaPg({ connectionString: connStr, max: 3 });
-  const prisma = new PrismaClient({ adapter } as never);
+  // Use Neon HTTP adapter for Neon URLs (TCP fails due to SCRAM channel binding).
+  // For standard PG, use PrismaPg.
+  const isNeon = (() => {
+    try { const h = new URL(connStr).hostname; return h.endsWith('.neon.tech') || h.includes('.neon.'); }
+    catch { return false; }
+  })();
+
+  let prisma: PrismaClient;
+  if (isNeon) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { neonConfig, neon } = require('@neondatabase/serverless');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaNeonHttp } = require('@prisma/adapter-neon');
+
+    // Force IPv4 — undici tries IPv6 first which times out on some networks
+    if (!process.env.VERCEL) {
+      neonConfig.fetchFunction = (input: RequestInfo | URL, init?: RequestInit) => {
+        const urlStr = typeof input === 'string' ? input : input.toString();
+        const parsed = new URL(urlStr);
+        const body = (init?.body as string) ?? '';
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        return new Promise<Response>((resolve, reject) => {
+          const req = https.request({
+            hostname: parsed.hostname, port: 443,
+            path: parsed.pathname + parsed.search,
+            method: (init?.method ?? 'GET').toUpperCase(),
+            family: 4,
+            headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
+          }, (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (d: Buffer) => chunks.push(d));
+            res.on('end', () => {
+              const text = Buffer.concat(chunks).toString('utf8');
+              resolve(new Response(text, { status: res.statusCode ?? 200, headers: res.headers as HeadersInit }));
+            });
+          });
+          req.on('error', reject);
+          if (body) req.write(body);
+          req.end();
+        });
+      };
+    }
+
+    const adapter = new PrismaNeonHttp(connStr);
+    prisma = new PrismaClient({ adapter } as never);
+  } else {
+    const adapter = new PrismaPg({ connectionString: connStr, max: 3 });
+    prisma = new PrismaClient({ adapter } as never);
+  }
 
   const endDate = getLastWeekday();
   const newFundStart = new Date(endDate);

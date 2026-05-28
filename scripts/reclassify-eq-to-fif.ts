@@ -20,12 +20,10 @@ if (existsSync(envFile)) dotenvConfig({ path: envFile });
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL not set');
 
-  const { PrismaClient } = await import('@prisma/client');
-  const { PrismaPg } = await import('@prisma/adapter-pg');
+  const { createClient } = await import('../lib/db');
   const { inferFundType, inferRiskLevel } = await import('../lib/utils');
 
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 1 });
-  const prisma = new PrismaClient({ adapter });
+  const prisma = createClient();
 
   // ── 1. Reclassify EQ → FIF ────────────────────────────────────────────────
   console.log('\n━━━ Step 1: Re-check EQ funds ━━━');

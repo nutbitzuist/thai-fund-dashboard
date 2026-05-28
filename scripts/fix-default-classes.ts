@@ -8,15 +8,12 @@
 // 3. If class ends with "-A" or "-AI" → prefer it
 // 4. Otherwise pick the class with the most NAV records (most data)
 
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { createClient } from '../lib/db';
 
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error('DATABASE_URL is not set');
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
 
-  const adapter = new PrismaPg({ connectionString, max: 1 });
-  const prisma = new PrismaClient({ adapter });
+  const prisma = createClient();
 
   console.log('Finding funds with no default class...');
 

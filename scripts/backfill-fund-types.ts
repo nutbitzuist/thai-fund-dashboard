@@ -5,16 +5,13 @@
 // The SEC FundFactsheet API does not return fund_type or risk_spectrum,
 // so we infer them from Thai/English fund names.
 
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { createClient } from '../lib/db';
 import { inferFundType, inferRiskLevel } from '../lib/utils';
 
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error('DATABASE_URL is not set');
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
 
-  const adapter = new PrismaPg({ connectionString, max: 1 });
-  const prisma = new PrismaClient({ adapter });
+  const prisma = createClient();
 
   console.log('Fetching funds with null fundType...');
   const funds = await prisma.fund.findMany({

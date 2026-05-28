@@ -2,8 +2,7 @@
 // One-time: populate Fund.regisDate from SEC Factsheet API
 // Run: source .env.local && DATABASE_URL="$DATABASE_URL" SEC_API_KEY="$SEC_API_KEY" npx tsx scripts/backfill-regis-dates.ts
 
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { createClient } from '../lib/db';
 
 const SEC_BASE = 'https://api.sec.or.th';
 
@@ -30,7 +29,7 @@ async function main() {
   const apiKey = process.env.SEC_API_KEY;
   if (!apiKey) throw new Error('SEC_API_KEY not set');
 
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: connStr, max: 1 }) });
+  const prisma = createClient();
 
   console.log('Fetching AMCs...');
   const amcs = await fetchAmcs(apiKey);

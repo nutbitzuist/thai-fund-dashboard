@@ -33,12 +33,12 @@ export async function syncAmcs(): Promise<number> {
     if (!amc.unique_id) continue;
     // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
     await prisma.$executeRaw`
-      INSERT INTO amc (unique_id, name_th, name_en, created_at, updated_at)
+      INSERT INTO amc ("uniqueId", "nameTh", "nameEn", "createdAt", "updatedAt")
       VALUES (${amc.unique_id}, ${amc.name_th ?? ''}, ${amc.name_en ?? null}, NOW(), NOW())
-      ON CONFLICT (unique_id) DO UPDATE SET
-        name_th   = EXCLUDED.name_th,
-        name_en   = EXCLUDED.name_en,
-        updated_at = NOW()
+      ON CONFLICT ("uniqueId") DO UPDATE SET
+        "nameTh"    = EXCLUDED."nameTh",
+        "nameEn"    = EXCLUDED."nameEn",
+        "updatedAt" = NOW()
     `;
     upserted++;
   }
@@ -76,27 +76,27 @@ export async function syncFunds(): Promise<number> {
 
       // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
       await prisma.$executeRaw`
-        INSERT INTO fund (proj_id, proj_abbr_name, name_th, name_en, fund_status,
-                          unique_id, amc_id, fund_type, risk_level, dividend_policy,
-                          regis_date, created_at, updated_at)
+        INSERT INTO fund ("projId", "projAbbrName", "nameTh", "nameEn", "fundStatus",
+                          "uniqueId", "amcId", "fundType", "riskLevel", "dividendPolicy",
+                          "regisDate", "createdAt", "updatedAt")
         VALUES (
           ${fund.proj_id}, ${fund.proj_abbr_name ?? null}, ${nameTh}, ${nameEn},
           ${fund.fund_status ?? null}, ${fund.unique_id ?? amc.uniqueId}, ${amc.id},
           ${inferredType ?? null}, ${inferredRisk ?? null}, ${fund.dividend_policy ?? null},
           ${regisDate}, NOW(), NOW()
         )
-        ON CONFLICT (proj_id) DO UPDATE SET
-          proj_abbr_name  = EXCLUDED.proj_abbr_name,
-          name_th         = EXCLUDED.name_th,
-          name_en         = EXCLUDED.name_en,
-          fund_status     = EXCLUDED.fund_status,
-          unique_id       = EXCLUDED.unique_id,
-          amc_id          = EXCLUDED.amc_id,
-          fund_type       = EXCLUDED.fund_type,
-          risk_level      = EXCLUDED.risk_level,
-          dividend_policy = EXCLUDED.dividend_policy,
-          regis_date      = COALESCE(EXCLUDED.regis_date, fund.regis_date),
-          updated_at      = NOW()
+        ON CONFLICT ("projId") DO UPDATE SET
+          "projAbbrName"  = EXCLUDED."projAbbrName",
+          "nameTh"        = EXCLUDED."nameTh",
+          "nameEn"        = EXCLUDED."nameEn",
+          "fundStatus"    = EXCLUDED."fundStatus",
+          "uniqueId"      = EXCLUDED."uniqueId",
+          "amcId"         = EXCLUDED."amcId",
+          "fundType"      = EXCLUDED."fundType",
+          "riskLevel"     = EXCLUDED."riskLevel",
+          "dividendPolicy" = EXCLUDED."dividendPolicy",
+          "regisDate"     = COALESCE(EXCLUDED."regisDate", fund."regisDate"),
+          "updatedAt"     = NOW()
       `;
       upserted++;
     }
@@ -169,16 +169,16 @@ export async function syncNavForFund(
       const buyPrice = item.buy_price ? parseFloat(item.buy_price) : null;
       const sellPrice = item.sell_price ? parseFloat(item.sell_price) : null;
       await prisma.$executeRaw`
-        INSERT INTO nav_price (fund_id, fund_class_id, nav_date, last_val,
-                               buy_price, sell_price, net_asset, created_at, updated_at)
+        INSERT INTO nav_price ("fundId", "fundClassId", "navDate", "lastVal",
+                               "buyPrice", "sellPrice", "netAsset", "createdAt", "updatedAt")
         VALUES (${fundId}, ${fundClass.id}, ${new Date(date)}, ${lastVal},
                 ${buyPrice}, ${sellPrice}, ${netAsset}, NOW(), NOW())
-        ON CONFLICT (fund_class_id, nav_date) DO UPDATE SET
-          last_val   = EXCLUDED.last_val,
-          buy_price  = EXCLUDED.buy_price,
-          sell_price = EXCLUDED.sell_price,
-          net_asset  = COALESCE(EXCLUDED.net_asset, nav_price.net_asset),
-          updated_at = NOW()
+        ON CONFLICT ("fundClassId", "navDate") DO UPDATE SET
+          "lastVal"   = EXCLUDED."lastVal",
+          "buyPrice"  = EXCLUDED."buyPrice",
+          "sellPrice" = EXCLUDED."sellPrice",
+          "netAsset"  = COALESCE(EXCLUDED."netAsset", nav_price."netAsset"),
+          "updatedAt" = NOW()
       `;
       inserted++;
     }
@@ -316,9 +316,9 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
 
     // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
     await prisma.$executeRaw`
-      INSERT INTO fund_metric (fund_id, fund_class_id, period, start_date, end_date,
-                               return_pct, annualized_volatility_pct, max_drawdown_pct,
-                               sharpe_ratio, nav_count, calculated_at)
+      INSERT INTO fund_metric ("fundId", "fundClassId", period, "startDate", "endDate",
+                               "returnPct", "annualizedVolatilityPct", "maxDrawdownPct",
+                               "sharpeRatio", "navCount", "calculatedAt")
       VALUES (
         ${fundId}, ${defaultClass.id}, ${period},
         ${result.startDate}, ${result.endDate},
@@ -326,14 +326,14 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
         ${result.maxDrawdownPct}, ${result.sharpeRatio},
         ${result.navCount}, NOW()
       )
-      ON CONFLICT (fund_class_id, period, end_date) DO UPDATE SET
-        start_date                  = EXCLUDED.start_date,
-        return_pct                  = EXCLUDED.return_pct,
-        annualized_volatility_pct   = EXCLUDED.annualized_volatility_pct,
-        max_drawdown_pct            = EXCLUDED.max_drawdown_pct,
-        sharpe_ratio                = EXCLUDED.sharpe_ratio,
-        nav_count                   = EXCLUDED.nav_count,
-        calculated_at               = NOW()
+      ON CONFLICT ("fundClassId", period, "endDate") DO UPDATE SET
+        "startDate"               = EXCLUDED."startDate",
+        "returnPct"               = EXCLUDED."returnPct",
+        "annualizedVolatilityPct" = EXCLUDED."annualizedVolatilityPct",
+        "maxDrawdownPct"          = EXCLUDED."maxDrawdownPct",
+        "sharpeRatio"             = EXCLUDED."sharpeRatio",
+        "navCount"                = EXCLUDED."navCount",
+        "calculatedAt"            = NOW()
     `;
     calculated++;
   }

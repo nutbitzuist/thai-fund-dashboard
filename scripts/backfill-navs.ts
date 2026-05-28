@@ -232,16 +232,16 @@ async function syncFundNavs(
       const sellPrice = item.sell_price ? parseFloat(item.sell_price) : null;
       // Use raw SQL — PrismaNeonHttp doesn't support the transactions upsert uses internally
       await prisma.$executeRaw`
-        INSERT INTO nav_price (fund_id, fund_class_id, nav_date, last_val,
-                               buy_price, sell_price, net_asset, created_at, updated_at)
+        INSERT INTO nav_price ("fundId", "fundClassId", "navDate", "lastVal",
+                               "buyPrice", "sellPrice", "netAsset", "createdAt", "updatedAt")
         VALUES (${fundId}, ${fundClass.id}, ${new Date(date)}, ${lastVal},
                 ${buyPrice}, ${sellPrice}, ${netAsset}, NOW(), NOW())
-        ON CONFLICT (fund_class_id, nav_date) DO UPDATE SET
-          last_val   = EXCLUDED.last_val,
-          buy_price  = EXCLUDED.buy_price,
-          sell_price = EXCLUDED.sell_price,
-          net_asset  = COALESCE(EXCLUDED.net_asset, nav_price.net_asset),
-          updated_at = NOW()
+        ON CONFLICT ("fundClassId", "navDate") DO UPDATE SET
+          "lastVal"   = EXCLUDED."lastVal",
+          "buyPrice"  = EXCLUDED."buyPrice",
+          "sellPrice" = EXCLUDED."sellPrice",
+          "netAsset"  = COALESCE(EXCLUDED."netAsset", nav_price."netAsset"),
+          "updatedAt" = NOW()
       `;
       inserted++;
     }
@@ -337,22 +337,22 @@ async function calcMetricsForFund(prisma: PrismaClient, fundId: number): Promise
 
     // Use raw SQL — PrismaNeonHttp doesn't support the transactions upsert uses internally
     await prisma.$executeRaw`
-      INSERT INTO fund_metric (fund_id, fund_class_id, period, start_date, end_date,
-                               return_pct, annualized_volatility_pct, max_drawdown_pct,
-                               sharpe_ratio, nav_count, calculated_at)
+      INSERT INTO fund_metric ("fundId", "fundClassId", period, "startDate", "endDate",
+                               "returnPct", "annualizedVolatilityPct", "maxDrawdownPct",
+                               "sharpeRatio", "navCount", "calculatedAt")
       VALUES (
         ${fundId}, ${defaultClass.id}, ${period},
         ${startDate}, ${endDate},
         ${ret}, ${vol}, ${dd}, ${sharpe}, ${navCount}, NOW()
       )
-      ON CONFLICT (fund_class_id, period, end_date) DO UPDATE SET
-        start_date                = EXCLUDED.start_date,
-        return_pct                = EXCLUDED.return_pct,
-        annualized_volatility_pct = EXCLUDED.annualized_volatility_pct,
-        max_drawdown_pct          = EXCLUDED.max_drawdown_pct,
-        sharpe_ratio              = EXCLUDED.sharpe_ratio,
-        nav_count                 = EXCLUDED.nav_count,
-        calculated_at             = NOW()
+      ON CONFLICT ("fundClassId", period, "endDate") DO UPDATE SET
+        "startDate"               = EXCLUDED."startDate",
+        "returnPct"               = EXCLUDED."returnPct",
+        "annualizedVolatilityPct" = EXCLUDED."annualizedVolatilityPct",
+        "maxDrawdownPct"          = EXCLUDED."maxDrawdownPct",
+        "sharpeRatio"             = EXCLUDED."sharpeRatio",
+        "navCount"                = EXCLUDED."navCount",
+        "calculatedAt"            = NOW()
     `;
     calculated++;
   }

@@ -37,10 +37,12 @@ const TABS: { id: Tab; label: string; apiMetric?: string; apiPath?: 'rankings' |
 ]
 
 // Top-level fund types for chip filter (not all types — keep it short)
+// NOTE: EQ = equity fund *structure* (SEC classification). After our improved backfill,
+// EQ should only contain Thai-focused equity funds; international equity funds are FIF.
 const TYPE_CHIPS = [
   { value: '', label: 'ทั้งหมด' },
   { value: 'EQ', label: 'หุ้นไทย' },
-  { value: 'FIF', label: 'ต่างประเทศ' },
+  { value: 'FIF', label: 'หุ้นต่างประเทศ' },
   { value: 'FI', label: 'ตราสารหนี้' },
   { value: 'BA', label: 'ผสม' },
   { value: 'MM', label: 'ตลาดเงิน' },

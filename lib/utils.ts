@@ -256,9 +256,13 @@ export function hasSufficientData(period: string, navCount: number | null | unde
 }
 
 // ── Fund Type Inference ───────────────────────
-// The SEC FundFactsheet API does NOT return fund_type or risk_spectrum.
+// The SEC FundFactsheet API does NOT always return fund_type or risk_spectrum.
 // We infer fund_type from Thai/English fund names using common naming conventions.
 // invest_country_flag: "1" = may invest abroad, "3" = domestic only
+//
+// IMPORTANT: EQ ≠ Thai stocks. The SEC classifies fund *structure*, not geography.
+// Many foreign equity funds (China, Japan, US, etc.) are filed as EQ under SEC rules.
+// We promote these to FIF during inference so filters work correctly for users.
 
 export type InferredFundType = 'EQ' | 'FI' | 'MM' | 'BA' | 'RE' | 'CM' | 'FIF' | 'SSF' | 'RMF' | 'AI';
 
@@ -278,9 +282,38 @@ const FUND_TYPE_PATTERNS: Array<{ pattern: RegExp; type: InferredFundType }> = [
   { pattern: /Fixed\s+Income|ตราสารหนี้|Bond|หุ้นกู้|Income\s+Fund/i, type: 'FI' },
   // Balanced
   { pattern: /Balanced|ผสม|Mixed|Asset\s+Alloc/i, type: 'BA' },
-  // Foreign investment (FIF)
-  { pattern: /Foreign|Global|International|World|ต่างประเทศ|FIF\b/i, type: 'FIF' },
-  // Equity (catch-all after specifics)
+  // Foreign investment — geography keywords (must come before generic Equity catch)
+  // Covers: fund name contains a foreign country/region name in Thai or English
+  {
+    pattern: new RegExp(
+      [
+        'Foreign', 'Global', 'International', 'World', 'Worldwide',
+        'ต่างประเทศ', 'FIF\\b',
+        // Countries / regions
+        'Japan', 'ญี่ปุ่น', 'เจแปน',
+        'China', 'จีน', 'ไชน่า', 'A-Share', 'AShare', 'CSI',
+        'US\\b', 'U\\.S\\.', 'USA', 'America', 'อเมริกา', 'ยูเอส',
+        'S&P', 'NASDAQ', 'Dow\\s*Jones', 'Russell',
+        'India', 'อินเดีย',
+        'Korea', 'เกาหลี',
+        'Taiwan', 'ไต้หวัน',
+        'Europe', 'ยุโรป', 'Euro\\s*pe', 'Eurozone',
+        'Asia(?:\\s+ex)?', 'เอเชีย', 'Asia\\s*Pacific', 'APAC',
+        'ASEAN', 'อาเซียน',
+        'Vietnam', 'เวียดนาม',
+        'Indonesia', 'อินโดนีเซีย',
+        'Singapore', 'สิงคโปร์',
+        'Hong\\s*Kong', 'ฮ่องกง',
+        'Emerging\\s*Market', 'EM\\b',
+        'Nikkei', 'TOPIX', 'Hang\\s*Seng', 'KOSPI', 'SENSEX', 'MSCI',
+        // Common umbrella fund keywords for offshore feeders
+        'Offshore', 'Feeder', 'Master\\s*Fund',
+      ].join('|'),
+      'i'
+    ),
+    type: 'FIF',
+  },
+  // Equity (Thai domestic — catch-all after all more-specific types)
   { pattern: /Equity|หุ้น|Stock|Dividend|ปันผล|Growth|Value\s+Fund/i, type: 'EQ' },
 ];
 
@@ -290,11 +323,21 @@ export function inferFundType(
   investCountryFlag: string | null | undefined
 ): InferredFundType | null {
   const combined = `${nameTh} ${nameEn ?? ''}`;
+
+  // If the SEC flagged this as investing abroad AND no more-specific structural type
+  // is detected yet, treat it as FIF right away — skip the generic Equity catch.
+  const matchesForeignFlag = investCountryFlag === '1';
+
   for (const { pattern, type } of FUND_TYPE_PATTERNS) {
-    if (pattern.test(combined)) return type;
+    if (pattern.test(combined)) {
+      // If the SEC says "invests abroad" but we matched a generic Equity pattern,
+      // upgrade to FIF so the filter chips work correctly for users.
+      if (type === 'EQ' && matchesForeignFlag) return 'FIF';
+      return type;
+    }
   }
   // Fallback: if fund invests abroad and no other match, classify as FIF
-  if (investCountryFlag === '1') return 'FIF';
+  if (matchesForeignFlag) return 'FIF';
   return null;
 }
 

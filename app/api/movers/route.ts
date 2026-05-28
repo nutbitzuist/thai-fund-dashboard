@@ -7,6 +7,7 @@ import { z } from 'zod';
 import prisma from '@/lib/db';
 import { handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -135,7 +136,7 @@ export async function GET(req: NextRequest) {
         prevDate: prevDate.toISOString().split('T')[0],
         totalFunds: movers.length,
       },
-      { headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600' } },
+      { headers: publicCacheHeaders() },
     );
   } catch (err) {
     return handleRouteError(err);

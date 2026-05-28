@@ -17,6 +17,7 @@ import { z } from 'zod';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,7 @@ export const dynamic = 'force-dynamic';
 // ── Cache headers ─────────────────────────────────────────────────────────────
 // s-maxage: CDN caches for 60 s (Vercel Edge Cache serves instantly)
 // stale-while-revalidate: CDN keeps serving stale for 5 min while refreshing
-const CACHE = 'public, s-maxage=60, stale-while-revalidate=300';
+const CACHE_HEADERS = publicCacheHeaders();
 
 // ── Metric sort config ────────────────────────────────────────────────────────
 const METRIC_SORT_KEYS = ['return1Y', 'return3Y', 'volatility1Y', 'maxDrawdown1Y', 'sharpe1Y'] as const;
@@ -191,7 +192,7 @@ export async function GET(req: NextRequest) {
       if (!fundIds.length) {
         return NextResponse.json(
           { data: [], pagination: { page, limit, total: 0, totalPages: 0 } },
-          { headers: { 'Cache-Control': CACHE } },
+          { headers: CACHE_HEADERS },
         );
       }
 
@@ -238,7 +239,7 @@ export async function GET(req: NextRequest) {
 
       return NextResponse.json(
         { data: fundList, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } },
-        { headers: { 'Cache-Control': CACHE } },
+        { headers: CACHE_HEADERS },
       );
     }
 
@@ -276,7 +277,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       { data: fundList, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } },
-      { headers: { 'Cache-Control': CACHE } },
+      { headers: CACHE_HEADERS },
     );
   } catch (err) {
     return handleRouteError(err);

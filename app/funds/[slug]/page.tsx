@@ -39,6 +39,11 @@ interface Props {
   params: Promise<{ slug: string }>
 }
 
+// Fund data updates once daily. Cache fund detail HTML at Vercel's edge so
+// crawlers/users do not force a fresh origin render for every fund page view.
+export const revalidate = 21600
+export const dynamic = 'force-static'
+
 // Resolve slug → fund row (projAbbrName case-insensitive, then projId fallback)
 async function getFundBySlug(slug: string) {
   return prisma.fund.findFirst({
@@ -180,7 +185,7 @@ export default async function FundDetailPage({ params }: Props) {
 
   // Fetch similar funds, category stats, and AUM trend in parallel (non-blocking)
   const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-  const [similarFunds, categoryStats, oldNavRecord] = await Promise.all([
+  const [similarFunds, categoryStats, oldNavRecord, latestMarketNavRecord] = await Promise.all([
     getSimilarFunds(fund.fundType, fund.projId),
     getCategoryStats(fund.fundType),
     defaultClass?.id ? prisma.navPrice.findFirst({
@@ -192,6 +197,10 @@ export default async function FundDetailPage({ params }: Props) {
       orderBy: { navDate: 'desc' },
       select: { netAsset: true, navDate: true },
     }) : null,
+    prisma.navPrice.findFirst({
+      orderBy: { navDate: 'desc' },
+      select: { navDate: true },
+    }),
   ])
 
   const latestNavRecord = fund.navPrices.find((n) => n.fundClassId === defaultClass?.id) ?? fund.navPrices[0]
@@ -205,8 +214,9 @@ export default async function FundDetailPage({ params }: Props) {
   const prevNav = prevNavRecord ? Number(prevNavRecord.lastVal) : null
   const dailyChangePct = latestNav && prevNav ? ((latestNav - prevNav) / prevNav) * 100 : null
 
-  const daysSinceNav = latestNavRecord
-    ? Math.floor((Date.now() - latestNavRecord.navDate.getTime()) / (1000 * 60 * 60 * 24))
+  const referenceDateMs = latestMarketNavRecord?.navDate.getTime() ?? latestNavRecord?.navDate.getTime() ?? null
+  const daysSinceNav = latestNavRecord && referenceDateMs != null
+    ? Math.max(0, Math.floor((referenceDateMs - latestNavRecord.navDate.getTime()) / (1000 * 60 * 60 * 24)))
     : null
   const isStaleNav = daysSinceNav != null && daysSinceNav > 5
 
@@ -303,7 +313,9 @@ export default async function FundDetailPage({ params }: Props) {
                   <span><span className="text-slate-400">นโยบายปันผล:</span> {DIVIDEND_POLICY_LABELS[fund.dividendPolicy] ?? fund.dividendPolicy}</span>
                 )}
                 {fund.regisDate && (() => {
-                  const ageYears = Math.floor((Date.now() - new Date(fund.regisDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+                  const ageYears = referenceDateMs != null
+                    ? Math.floor((referenceDateMs - new Date(fund.regisDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+                    : 0;
                   return (
                     <span>
                       <span className="text-slate-400">จัดตั้ง:</span>{' '}

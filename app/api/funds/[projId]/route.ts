@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { METRIC_PERIODS } from '@/types';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,25 +71,28 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({
-      id: fund.id,
-      projId: fund.projId,
-      projAbbrName: fund.projAbbrName,
-      nameTh: fund.nameTh,
-      nameEn: fund.nameEn,
-      fundStatus: fund.fundStatus,
-      fundType: fund.fundType,
-      riskLevel: fund.riskLevel,
-      dividendPolicy: fund.dividendPolicy,
-      amc: fund.amc,
-      fundClasses: fund.fundClasses,
-      latestNav,
-      latestNavDate: latestNavRecord?.navDate.toISOString().split('T')[0] ?? null,
-      buyPrice: latestNavRecord?.buyPrice != null ? Number(latestNavRecord.buyPrice) : null,
-      sellPrice: latestNavRecord?.sellPrice != null ? Number(latestNavRecord.sellPrice) : null,
-      dailyChangePct,
-      metrics: metricsByPeriod,
-    });
+    return NextResponse.json(
+      {
+        id: fund.id,
+        projId: fund.projId,
+        projAbbrName: fund.projAbbrName,
+        nameTh: fund.nameTh,
+        nameEn: fund.nameEn,
+        fundStatus: fund.fundStatus,
+        fundType: fund.fundType,
+        riskLevel: fund.riskLevel,
+        dividendPolicy: fund.dividendPolicy,
+        amc: fund.amc,
+        fundClasses: fund.fundClasses,
+        latestNav,
+        latestNavDate: latestNavRecord?.navDate.toISOString().split('T')[0] ?? null,
+        buyPrice: latestNavRecord?.buyPrice != null ? Number(latestNavRecord.buyPrice) : null,
+        sellPrice: latestNavRecord?.sellPrice != null ? Number(latestNavRecord.sellPrice) : null,
+        dailyChangePct,
+        metrics: metricsByPeriod,
+      },
+      { headers: publicCacheHeaders() },
+    );
   } catch (err) {
     return handleRouteError(err);
   }

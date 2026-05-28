@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { METRIC_PERIODS } from '@/types';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,12 +60,15 @@ export async function GET(
       };
     }
 
-    return NextResponse.json({
-      projId,
-      fundClassId: defaultClass.id,
-      classAbbrName: defaultClass.classAbbrName,
-      metrics: result,
-    });
+    return NextResponse.json(
+      {
+        projId,
+        fundClassId: defaultClass.id,
+        classAbbrName: defaultClass.classAbbrName,
+        metrics: result,
+      },
+      { headers: publicCacheHeaders() },
+    );
   } catch (err) {
     return handleRouteError(err);
   }

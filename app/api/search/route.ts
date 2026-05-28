@@ -8,6 +8,7 @@ import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { normalizeSearchQuery } from '@/lib/utils';
+import { CACHE_PROFILES, publicCacheHeaders } from '@/lib/cache-headers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -92,7 +93,10 @@ export async function GET(req: NextRequest) {
       data: { query: query.slice(0, 200), resultCount: funds.length },
     }).catch(() => {}); // non-critical
 
-    return NextResponse.json({ results, total: results.length });
+    return NextResponse.json(
+      { results, total: results.length },
+      { headers: publicCacheHeaders(CACHE_PROFILES.search) },
+    );
   } catch (err) {
     return handleRouteError(err);
   }

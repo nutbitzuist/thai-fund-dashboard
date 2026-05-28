@@ -6,6 +6,7 @@ import { z } from 'zod';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 // Inline type for FundMetric with includes (Prisma 7 compat)
 interface MetricWithRelations {
@@ -160,7 +161,7 @@ export async function GET(req: NextRequest) {
         disclaimer:
           'อันดับนี้จัดทำเพื่อการศึกษาเท่านั้น ไม่ใช่คำแนะนำการลงทุน ผลการดำเนินงานในอดีตไม่ได้รับประกันผลในอนาคต',
       },
-      { headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600' } },
+      { headers: publicCacheHeaders() },
     );
   } catch (err) {
     return handleRouteError(err);

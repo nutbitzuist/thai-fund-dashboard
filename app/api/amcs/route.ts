@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 export const runtime = 'nodejs';
 // Cache for 1 hour — AMC list rarely changes
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
       orderBy: { nameTh: 'asc' },
       select: { id: true, uniqueId: true, nameTh: true, nameEn: true },
     });
-    return NextResponse.json({ data: amcs });
+    return NextResponse.json({ data: amcs }, { headers: publicCacheHeaders() });
   } catch (err) {
     return handleRouteError(err);
   }

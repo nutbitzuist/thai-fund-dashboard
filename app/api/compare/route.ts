@@ -7,6 +7,7 @@ import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getPeriodStartDate } from '@/lib/utils';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 interface FundWithRelations {
   projId: string;
@@ -124,11 +125,14 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      funds: fundSummaries,
-      navData: navDataMap,
-      period,
-    });
+    return NextResponse.json(
+      {
+        funds: fundSummaries,
+        navData: navDataMap,
+        period,
+      },
+      { headers: publicCacheHeaders() },
+    );
   } catch (err) {
     return handleRouteError(err);
   }

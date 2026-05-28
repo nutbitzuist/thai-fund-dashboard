@@ -6,6 +6,7 @@ import { z } from 'zod';
 import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { getPeriodStartDate } from '@/lib/utils';
+import { publicCacheHeaders } from '@/lib/cache-headers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,7 +84,10 @@ export async function GET(
       value: baseNav > 0 ? (d.nav / baseNav) * 100 : 100,
     }));
 
-    return NextResponse.json({ data, normalized, period, fundClassId });
+    return NextResponse.json(
+      { data, normalized, period, fundClassId },
+      { headers: publicCacheHeaders() },
+    );
   } catch (err) {
     return handleRouteError(err);
   }

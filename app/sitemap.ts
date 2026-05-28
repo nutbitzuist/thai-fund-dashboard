@@ -35,7 +35,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         where: { fundStatus: { in: ['RG', 'SE'] } },
         select: { projAbbrName: true, projId: true },
       }),
-      prisma.amc.findMany({ select: { uniqueId: true } }),
+      prisma.amc.findMany({ select: { uniqueId: true, slug: true } }),
     ]);
 
     const fundPages: MetadataRoute.Sitemap = funds.map((f) => ({
@@ -46,7 +46,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }));
 
     const amcPages: MetadataRoute.Sitemap = amcs.map((a) => ({
-      url: `${base}/amcs/${encodeURIComponent(a.uniqueId)}`,
+      url: `${base}/amcs/${a.slug ?? encodeURIComponent(a.uniqueId)}`,
       lastModified: now,
       changeFrequency: 'weekly' as const,
       priority: 0.6,

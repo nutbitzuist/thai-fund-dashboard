@@ -16,6 +16,7 @@ export const revalidate = 3600 // revalidate hourly
 interface AmcStats {
   id: number
   uniqueId: string
+  slug: string | null
   nameTh: string
   nameEn: string | null
   fundCount: number
@@ -28,6 +29,7 @@ async function getAmcStats(): Promise<AmcStats[]> {
     select: {
       id: true,
       uniqueId: true,
+      slug: true,
       nameTh: true,
       nameEn: true,
       funds: {
@@ -60,6 +62,7 @@ async function getAmcStats(): Promise<AmcStats[]> {
     return {
       id: amc.id,
       uniqueId: amc.uniqueId,
+      slug: amc.slug,
       nameTh: amc.nameTh,
       nameEn: amc.nameEn,
       fundCount,
@@ -97,7 +100,7 @@ export default async function AmcsPage() {
         {amcs.map((amc) => (
           <Link
             key={amc.id}
-            href={`/amcs/${encodeURIComponent(amc.uniqueId)}`}
+            href={`/amcs/${amc.slug ?? encodeURIComponent(amc.uniqueId)}`}
             className="flex items-center gap-4 bg-white rounded-xl border border-slate-200 px-4 py-4 hover:border-blue-300 hover:shadow-sm transition-all group"
           >
             {/* Icon placeholder */}

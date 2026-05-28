@@ -92,7 +92,7 @@ export function TopRankings({ data1Y, dataYTD, data3M, data1M }: TopRankingsProp
   const [tab, setTab] = useState<Tab>('1D')
   const [fundType, setFundType] = useState('')
   const [rows, setRows] = useState<RankEntry[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // 1D default always fetches — start in loading state
 
   // Server-provided initial data (no API call needed for default state)
   // Returns null when data isn't available server-side; empty array means "not yet loaded"

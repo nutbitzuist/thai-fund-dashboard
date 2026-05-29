@@ -167,7 +167,7 @@ export default async function AmcDetailPage({ params }: Props) {
           {Object.entries(typeCount)
             .sort(([, a], [, b]) => b - a)
             .map(([type, count]) => (
-              <Link key={type} href={`/funds/type/${type}`}>
+              <Link key={type} href={`/screener?amcId=${amc.id}&fundType=${type}`}>
                 <Badge variant="secondary" className="cursor-pointer hover:bg-blue-100">
                   {FUND_TYPE_LABELS[type] ?? type} ({count})
                 </Badge>

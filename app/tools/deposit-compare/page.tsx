@@ -11,23 +11,9 @@ export const metadata: Metadata = {
   keywords: ['กองทุน vs เงินฝาก', 'ดอกเบี้ยเงินฝาก', 'กองทุนตลาดเงิน', 'กองทุนตราสารหนี้', 'ฝากแบงก์'],
 }
 
-// Last updated: 2026-05
-const BANK_RATES = {
-  updatedAt: 'พ.ค. 2568',
-  savings: [
-    { bank: 'กสิกรไทย', abbr: 'KBank', rate: 0.50 },
-    { bank: 'ไทยพาณิชย์', abbr: 'SCB', rate: 0.50 },
-    { bank: 'กรุงเทพ', abbr: 'BBL', rate: 0.50 },
-    { bank: 'กรุงไทย', abbr: 'KTB', rate: 0.50 },
-    { bank: 'ทหารไทยธนชาต', abbr: 'TTB', rate: 1.50 },
-  ],
-  fixed12m: [
-    { bank: 'กสิกรไทย', abbr: 'KBank', rate: 1.50 },
-    { bank: 'ไทยพาณิชย์', abbr: 'SCB', rate: 1.50 },
-    { bank: 'กรุงเทพ', abbr: 'BBL', rate: 1.40 },
-    { bank: 'กรุงไทย', abbr: 'KTB', rate: 1.50 },
-    { bank: 'ทหารไทยธนชาต', abbr: 'TTB', rate: 1.85 },
-  ],
+const THAI_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+function toThaiDateShort(d: Date): string {
+  return `${THAI_MONTH_SHORT[d.getMonth()]} ${d.getFullYear() + 543}`
 }
 
 interface FundRow {
@@ -69,8 +55,42 @@ async function getTopFunds(): Promise<{ mm: FundRow[]; fi: FundRow[] }> {
   }
 }
 
+async function getBankRates() {
+  const rows = await prisma.bankRate.findMany({ orderBy: [{ productType: 'asc' }, { ratePct: 'desc' }] })
+  if (rows.length === 0) return null
+
+  const verifiedAt = rows.reduce((latest, r) => r.verifiedAt > latest ? r.verifiedAt : latest, rows[0].verifiedAt)
+  const savings = rows
+    .filter((r) => r.productType === 'SDA')
+    .map((r) => ({ bank: r.bankName, abbr: r.bankAbbr, rate: Number(r.ratePct) }))
+  const fixed12m = rows
+    .filter((r) => r.productType === 'FD12')
+    .map((r) => ({ bank: r.bankName, abbr: r.bankAbbr, rate: Number(r.ratePct) }))
+
+  return { updatedAt: toThaiDateShort(verifiedAt), savings, fixed12m }
+}
+
+// Fallback rates if DB is empty (should not happen after seed)
+const FALLBACK_BANK_RATES = {
+  updatedAt: 'พ.ค. 2568',
+  savings: [
+    { bank: 'กสิกรไทย', abbr: 'KBank', rate: 0.50 },
+    { bank: 'ไทยพาณิชย์', abbr: 'SCB', rate: 0.50 },
+    { bank: 'กรุงเทพ', abbr: 'BBL', rate: 0.50 },
+    { bank: 'กรุงไทย', abbr: 'KTB', rate: 0.50 },
+    { bank: 'ทหารไทยธนชาต', abbr: 'TTB', rate: 1.50 },
+  ],
+  fixed12m: [
+    { bank: 'กสิกรไทย', abbr: 'KBank', rate: 1.50 },
+    { bank: 'ไทยพาณิชย์', abbr: 'SCB', rate: 1.50 },
+    { bank: 'กรุงเทพ', abbr: 'BBL', rate: 1.40 },
+    { bank: 'กรุงไทย', abbr: 'KTB', rate: 1.50 },
+    { bank: 'ทหารไทยธนชาต', abbr: 'TTB', rate: 1.85 },
+  ],
+}
+
 export default async function DepositComparePage() {
-  const { mm, fi } = await getTopFunds()
+  const [{ mm, fi }, bankRates] = await Promise.all([getTopFunds(), getBankRates()])
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
@@ -83,7 +103,7 @@ export default async function DepositComparePage() {
         <p className="text-slate-500 text-sm mt-1">ฝากแบงก์หรือลงทุนกองทุนได้ผลตอบแทนดีกว่า?</p>
       </div>
 
-      <DepositClient topMM={mm} topFI={fi} bankRates={BANK_RATES} />
+      <DepositClient topMM={mm} topFI={fi} bankRates={bankRates ?? FALLBACK_BANK_RATES} />
     </div>
   )
 }

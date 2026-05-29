@@ -180,6 +180,25 @@ model SyncLog {
 }
 
 // ─────────────────────────────────────────────
+// BankRate (Thai bank deposit interest rates)
+// Updated via scripts/update-bank-rates.ts
+// Sources: individual bank websites / BOT publications
+// ─────────────────────────────────────────────
+model BankRate {
+  id          Int      @id @default(autoincrement())
+  bankName    String   // Thai name e.g. "กสิกรไทย"
+  bankAbbr    String   // English abbr e.g. "KBank"
+  productType String   // "SDA" = savings, "FD12" = fixed 12-month
+  ratePct     Decimal  @db.Decimal(6, 4) // interest rate in %
+  verifiedAt  DateTime @db.Date // date this rate was last confirmed
+  sourceUrl   String?  // URL to bank's published rate page
+
+  @@unique([bankAbbr, productType])
+  @@index([productType])
+  @@map("bank_rate")
+}
+
+// ─────────────────────────────────────────────
 // SearchLog (anonymous usage analytics)
 // IMPORTANT: No IP address or personal data stored
 // ─────────────────────────────────────────────

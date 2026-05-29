@@ -68,7 +68,9 @@ export function ScreenerClient() {
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 20, total: 0, totalPages: 0 })
   const [status, setStatus] = useState<'idle' | 'loading' | 'refreshing' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(
+    !!(searchParams.get('amcId') || searchParams.get('fundType') || searchParams.get('riskLevel'))
+  )
   const [amcs, setAmcs] = useState<Amc[]>([])
   const [activePreset, setActivePreset] = useState<string | null>(null)
   const [copiedLink, setCopiedLink] = useState(false)
@@ -254,9 +256,14 @@ export function ScreenerClient() {
         />
         <Button type="submit" disabled={isLoading}>ค้นหา</Button>
         <Button type="button" variant="outline" onClick={() => setShowFilters((v) => !v)}
-          className={cn(showFilters && 'bg-blue-50 border-blue-300 text-blue-700')}>
+          className={cn((showFilters || amcId || fundType || riskLevel) && 'bg-blue-50 border-blue-300 text-blue-700')}>
           <Filter className="h-4 w-4 sm:mr-1.5" />
           <span className="hidden sm:inline">ตัวกรอง</span>
+          {(amcId || fundType || riskLevel) && (
+            <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-700 text-white text-[10px] font-bold">
+              {[amcId, fundType, riskLevel].filter(Boolean).length}
+            </span>
+          )}
         </Button>
       </form>
 

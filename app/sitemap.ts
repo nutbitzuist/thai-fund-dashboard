@@ -7,7 +7,7 @@ export const revalidate = 86400; // 24h
 const FUND_TYPES = ['EQ', 'FI', 'MM', 'BA', 'RE', 'CM', 'AI', 'FIF', 'SSF', 'RMF'];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app';
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com';
   const now = new Date();
 
   const staticPages: MetadataRoute.Sitemap = [

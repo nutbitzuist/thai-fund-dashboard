@@ -120,7 +120,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!fund) return { title: 'ไม่พบกองทุน' }
 
   const abbr = fund.projAbbrName ?? fund.projId
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app'
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com'
   const canonicalUrl = `${base}/funds/${encodeURIComponent(abbr)}`
 
   // Fetch 1Y metric for richer description
@@ -219,7 +219,7 @@ export default async function FundDetailPage({ params }: Props) {
   const my1YReturn = m1Y?.returnPct != null ? Number(m1Y.returnPct) : null
   const compareUrl = `/compare?funds=${fund.projId}`
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app'
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com'
   const abbr = fund.projAbbrName ?? fund.projId
   const fundUrl_ = `${base}/funds/${encodeURIComponent(abbr)}`
 

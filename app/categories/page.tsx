@@ -79,6 +79,7 @@ async function getCategoryStats(): Promise<CategoryStats[]> {
 
 export default async function CategoriesPage() {
   const categories = await getCategoryStats()
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com'
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -88,13 +89,13 @@ export default async function CategoriesPage() {
         '@type': 'ListItem',
         position: 1,
         name: 'หน้าแรก',
-        item: 'https://thai-fund-dashboard.vercel.app/',
+        item: `${base}/`,
       },
       {
         '@type': 'ListItem',
         position: 2,
         name: 'หมวดหมู่กองทุนรวม',
-        item: 'https://thai-fund-dashboard.vercel.app/categories',
+        item: `${base}/categories`,
       },
     ],
   }

@@ -11,15 +11,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
   const staticPages: MetadataRoute.Sitemap = [
-    { url: base,                   lastModified: now, changeFrequency: 'daily',   priority: 1.0 },
-    { url: `${base}/funds`,        lastModified: now, changeFrequency: 'daily',   priority: 0.9 },
-    { url: `${base}/rankings`,     lastModified: now, changeFrequency: 'daily',   priority: 0.9 },
-    { url: `${base}/movers`,       lastModified: now, changeFrequency: 'daily',   priority: 0.8 },
-    { url: `${base}/compare`,      lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
-    { url: `${base}/amcs`,         lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
-    { url: `${base}/learn`,        lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
-    { url: `${base}/methodology`,  lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
-    { url: `${base}/about`,        lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
+    { url: base,                              lastModified: now, changeFrequency: 'daily',   priority: 1.0 },
+    { url: `${base}/funds`,                   lastModified: now, changeFrequency: 'daily',   priority: 0.9 },
+    { url: `${base}/rankings`,                lastModified: now, changeFrequency: 'daily',   priority: 0.9 },
+    { url: `${base}/movers`,                  lastModified: now, changeFrequency: 'daily',   priority: 0.8 },
+    { url: `${base}/heatmap`,                 lastModified: now, changeFrequency: 'daily',   priority: 0.8 },
+    { url: `${base}/screener`,                lastModified: now, changeFrequency: 'weekly',  priority: 0.8 },
+    { url: `${base}/compare`,                 lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
+    { url: `${base}/amcs`,                    lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
+    { url: `${base}/tools/deposit-compare`,   lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
+    { url: `${base}/tools/twin`,              lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
+    { url: `${base}/watchlist`,               lastModified: now, changeFrequency: 'weekly',  priority: 0.6 },
+    { url: `${base}/learn`,                   lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
+    { url: `${base}/methodology`,             lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
+    { url: `${base}/about`,                   lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
   ];
 
   const typePages: MetadataRoute.Sitemap = FUND_TYPES.map((type) => ({

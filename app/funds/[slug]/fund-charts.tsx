@@ -169,32 +169,34 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {/* CSV Download */}
             {navData.length > 0 && (
               <button
                 onClick={() => downloadCSV(navData, projId, period)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors shrink-0"
                 title="ดาวน์โหลด CSV"
               >
                 <Download className="h-3.5 w-3.5" />
-                CSV
+                <span className="hidden sm:inline">CSV</span>
               </button>
             )}
 
-            {/* Chart type selector */}
-            <Tabs value={activeChart} onValueChange={(v) => setActiveChart(v as ChartTab)}>
-              <TabsList className="h-8">
-                <TabsTrigger value="nav" className="text-xs px-2.5">NAV</TabsTrigger>
-                <TabsTrigger value="normalized" className="text-xs px-2.5">Normalized</TabsTrigger>
-                <TabsTrigger value="drawdown" className="text-xs px-2.5">Drawdown</TabsTrigger>
-                <TabsTrigger value="calculator" className="text-xs px-2.5">คำนวณ</TabsTrigger>
-                {navData.some((d) => d.netAsset != null) && (
-                  <TabsTrigger value="aum" className="text-xs px-2.5">AUM</TabsTrigger>
-                )}
-                <TabsTrigger value="heatmap" className="text-xs px-2.5">Heatmap</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            {/* Chart type selector — scrollable on mobile */}
+            <div className="overflow-x-auto max-w-full">
+              <Tabs value={activeChart} onValueChange={(v) => setActiveChart(v as ChartTab)}>
+                <TabsList className="h-8 flex-nowrap">
+                  <TabsTrigger value="nav" className="text-xs px-2.5 shrink-0">NAV</TabsTrigger>
+                  <TabsTrigger value="normalized" className="text-xs px-2 shrink-0 hidden sm:flex">Normalized</TabsTrigger>
+                  <TabsTrigger value="drawdown" className="text-xs px-2.5 shrink-0">Drawdown</TabsTrigger>
+                  <TabsTrigger value="calculator" className="text-xs px-2.5 shrink-0">คำนวณ</TabsTrigger>
+                  {navData.some((d) => d.netAsset != null) && (
+                    <TabsTrigger value="aum" className="text-xs px-2.5 shrink-0">AUM</TabsTrigger>
+                  )}
+                  <TabsTrigger value="heatmap" className="text-xs px-2.5 shrink-0">Heatmap</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
         </div>
 

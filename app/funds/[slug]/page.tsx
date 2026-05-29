@@ -735,25 +735,29 @@ export default async function FundDetailPage({ params }: Props) {
       })()}
 
       {/* Investment Policy */}
-      {fund.investmentPolicy && (
-        <section>
-          <Card>
-            <CardHeader>
-              <CardTitle>นโยบายการลงทุน</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">
-                {fund.investmentPolicy
-                  .replace(/<br\s*\/?>/gi, '\n')
-                  .replace(/<[^>]+>/g, '')
-                  .replace(/\n{3,}/g, '\n\n')
-                  .trim()}
-              </p>
-              <p className="text-xs text-slate-400 mt-3">ข้อมูลจาก ก.ล.ต.</p>
-            </CardContent>
-          </Card>
-        </section>
-      )}
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle>นโยบายการลงทุน</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {fund.investmentPolicy ? (
+              <>
+                <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">
+                  {fund.investmentPolicy
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim()}
+                </p>
+                <p className="text-xs text-slate-400 mt-3">ข้อมูลจาก ก.ล.ต.</p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500 italic">ยังไม่มีข้อมูลนโยบายการลงทุนจาก ก.ล.ต. สำหรับกองทุนนี้</p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
 
       {/* ── Streamed sections — render in parallel, don't block above content ── */}
 

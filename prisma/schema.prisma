@@ -40,9 +40,15 @@ model Fund {
   amcId          Int?
   fundType       String?  // e.g. "EQUITY", "FIXED_INCOME", "MIXED"
   riskLevel      Int?     // 1-8 scale per Thai SEC
-  dividendPolicy String?  // e.g. "PAID", "ACCUMULATE"
-  regisDate      DateTime? @db.Date // SEC regis_date — fund inception / registration date
-  createdAt      DateTime @default(now())
+  dividendPolicy    String?  // e.g. "PAID", "ACCUMULATE"
+  regisDate         DateTime? @db.Date // SEC regis_date — fund inception / registration date
+  // Fee fields from SEC /FundFactsheet/fund/{proj_id}/fee — updated by backfill-fees.ts
+  frontEndFee       Decimal? @db.Decimal(6, 4) // ค่าธรรมเนียมการขายหน่วยลงทุน actual charged %
+  backEndFee        Decimal? @db.Decimal(6, 4) // ค่าธรรมเนียมการรับซื้อคืน actual charged %
+  managementFee     Decimal? @db.Decimal(6, 4) // ค่าธรรมเนียมการจัดการ actual charged %
+  totalExpenseRatio Decimal? @db.Decimal(6, 4) // ค่าธรรมเนียมและค่าใช้จ่ายรวมทั้งหมด actual %
+  investmentPolicy  String?  // investment_policy_desc decoded from SEC /policy endpoint
+  createdAt         DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   amc         Amc?         @relation(fields: [amcId], references: [id])

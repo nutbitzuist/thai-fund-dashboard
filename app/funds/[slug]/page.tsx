@@ -590,6 +590,87 @@ export default async function FundDetailPage({ params }: Props) {
         </Card>
       </section>
 
+      {/* Fees */}
+      {(fund.totalExpenseRatio != null || fund.managementFee != null ||
+        fund.frontEndFee != null || fund.backEndFee != null) && (
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>ค่าธรรมเนียมและค่าใช้จ่าย</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {fund.totalExpenseRatio != null && (
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-center">
+                    <p className="text-xs text-slate-500 mb-1">Total Expense Ratio (TER)</p>
+                    <p className="text-2xl font-bold text-slate-900 tabular-nums">
+                      {Number(fund.totalExpenseRatio).toFixed(2)}%
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">ต่อปี</p>
+                  </div>
+                )}
+                {fund.managementFee != null && (
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-center">
+                    <p className="text-xs text-slate-500 mb-1">ค่าธรรมเนียมการจัดการ</p>
+                    <p className="text-2xl font-bold text-slate-900 tabular-nums">
+                      {Number(fund.managementFee).toFixed(2)}%
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">ต่อปี</p>
+                  </div>
+                )}
+                {fund.frontEndFee != null && (
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-center">
+                    <p className="text-xs text-slate-500 mb-1">Front-end Fee (ขาย)</p>
+                    <p className={cn('text-2xl font-bold tabular-nums',
+                      Number(fund.frontEndFee) === 0 ? 'text-emerald-600' : 'text-slate-900'
+                    )}>
+                      {Number(fund.frontEndFee).toFixed(2)}%
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">ต่อครั้ง</p>
+                  </div>
+                )}
+                {fund.backEndFee != null && (
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-center">
+                    <p className="text-xs text-slate-500 mb-1">Back-end Fee (รับซื้อคืน)</p>
+                    <p className={cn('text-2xl font-bold tabular-nums',
+                      Number(fund.backEndFee) === 0 ? 'text-emerald-600' : 'text-slate-900'
+                    )}>
+                      {Number(fund.backEndFee).toFixed(2)}%
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">ต่อครั้ง</p>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-3">
+                ค่าธรรมเนียมที่เรียกเก็บจริง ณ ปัจจุบัน ข้อมูลจาก ก.ล.ต. ·
+                อาจมีการเปลี่ยนแปลงได้ โปรดตรวจสอบจาก Fund Fact Sheet ล่าสุด
+              </p>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* Investment Policy */}
+      {fund.investmentPolicy && (
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>นโยบายการลงทุน</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">
+                {fund.investmentPolicy
+                  .replace(/<br\s*\/?>/gi, '\n')
+                  .replace(/<[^>]+>/g, '')
+                  .replace(/\n{3,}/g, '\n\n')
+                  .trim()}
+              </p>
+              <p className="text-xs text-slate-400 mt-3">ข้อมูลจาก ก.ล.ต.</p>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       {/* ── Streamed sections — render in parallel, don't block above content ── */}
 
       {/* Category Comparison + Percentile Rank */}

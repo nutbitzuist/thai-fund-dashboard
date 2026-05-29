@@ -23,6 +23,7 @@ interface TargetFund {
   fundType: string | null
   riskLevel: number | null
   returnPct: number | null
+  totalExpenseRatio: number | null
   amcName: string | null
 }
 
@@ -34,6 +35,7 @@ interface Alternative {
   riskLevel: number | null
   returnPct: number | null
   gainPct: number | null
+  totalExpenseRatio: number | null
   amcName: string | null
 }
 
@@ -177,14 +179,24 @@ export function TwinClient() {
                   <p className="text-xs text-slate-400 mt-0.5">{result.target.amcName}</p>
                 )}
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs text-slate-400 mb-0.5">ผลตอบแทน {PERIOD_LABELS[result.period]}</p>
-                <p className={cn('text-xl font-bold tabular-nums', result.target.returnPct != null
-                  ? result.target.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'
-                  : 'text-slate-400'
-                )}>
-                  {result.target.returnPct != null ? formatPct(result.target.returnPct) : '—'}
-                </p>
+              <div className="text-right shrink-0 space-y-2">
+                <div>
+                  <p className="text-xs text-slate-400 mb-0.5">ผลตอบแทน {PERIOD_LABELS[result.period]}</p>
+                  <p className={cn('text-xl font-bold tabular-nums', result.target.returnPct != null
+                    ? result.target.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'
+                    : 'text-slate-400'
+                  )}>
+                    {result.target.returnPct != null ? formatPct(result.target.returnPct) : '—'}
+                  </p>
+                </div>
+                {result.target.totalExpenseRatio != null && (
+                  <div>
+                    <p className="text-xs text-slate-400 mb-0.5">TER ต่อปี</p>
+                    <p className="text-sm font-semibold tabular-nums text-slate-700">
+                      {result.target.totalExpenseRatio.toFixed(2)}%
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -234,6 +246,11 @@ export function TwinClient() {
                         <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
                           +{alt.gainPct.toFixed(2)}% กว่ากองทุนคุณ
                         </span>
+                      )}
+                      {alt.totalExpenseRatio != null && (
+                        <p className="text-xs text-slate-400 tabular-nums">
+                          TER {alt.totalExpenseRatio.toFixed(2)}%/ปี
+                        </p>
                       )}
                     </div>
                   </div>

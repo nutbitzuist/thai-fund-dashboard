@@ -32,6 +32,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'th_TH',
     siteName: 'กองทุนไทย Research Dashboard',
+    url: process.env.NEXT_PUBLIC_APP_URL ?? 'https://thai-fund-dashboard.vercel.app',
   },
 }
 

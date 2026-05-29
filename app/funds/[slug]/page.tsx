@@ -686,12 +686,15 @@ export default async function FundDetailPage({ params }: Props) {
           'ตราสารอนุพันธ์':  'bg-amber-500',
           'สินทรัพย์ทางเลือก': 'bg-orange-500',
         }
-        const getColor = (name: string) => {
+        const getColor = (name: string | null) => {
+          if (!name) return 'bg-slate-300'
           for (const [key, cls] of Object.entries(ASSET_COLORS)) {
             if (name.includes(key)) return cls
           }
           return 'bg-slate-300'
         }
+        const validAssets = assets.filter((a) => a.asset_name && parseFloat(a.asset_ratio) > 0)
+        if (validAssets.length === 0) return null
         return (
           <section>
             <Card>
@@ -701,9 +704,8 @@ export default async function FundDetailPage({ params }: Props) {
               <CardContent>
                 {/* Stacked bar */}
                 <div className="flex h-6 rounded-lg overflow-hidden mb-4 gap-px">
-                  {assets.map((a) => {
+                  {validAssets.map((a) => {
                     const pct = parseFloat(a.asset_ratio)
-                    if (!pct) return null
                     return (
                       <div
                         key={a.asset_name}
@@ -716,7 +718,7 @@ export default async function FundDetailPage({ params }: Props) {
                 </div>
                 {/* Legend */}
                 <div className="flex flex-wrap gap-x-5 gap-y-2">
-                  {assets.map((a) => {
+                  {validAssets.map((a) => {
                     const pct = parseFloat(a.asset_ratio)
                     return (
                       <div key={a.asset_name} className="flex items-center gap-1.5 text-sm">

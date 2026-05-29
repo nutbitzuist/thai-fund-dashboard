@@ -48,6 +48,10 @@ model Fund {
   managementFee     Decimal? @db.Decimal(6, 4) // ค่าธรรมเนียมการจัดการ actual charged %
   totalExpenseRatio Decimal? @db.Decimal(6, 4) // ค่าธรรมเนียมและค่าใช้จ่ายรวมทั้งหมด actual %
   investmentPolicy  String?  // investment_policy_desc decoded from SEC /policy endpoint
+  // Asset allocation, benchmark, SEC performance — updated by backfill-sec-performance.ts
+  assetAllocation   Json?    // [{asset_name: string, asset_ratio: string}] from /asset
+  benchmark         String?  // primary benchmark name(s) from /benchmark, joined with " · "
+  secReturnYtd      Decimal? @db.Decimal(10, 4) // SEC-reported YTD return %
   createdAt         DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -136,6 +140,10 @@ model FundMetric {
   sharpeRatio             Decimal? @db.Decimal(10, 4)
   navCount                Int?     // number of NAV data points used
   calculatedAt            DateTime @default(now())
+  // SEC-reported figures from /performance — updated by backfill-sec-performance.ts
+  secReturnPct            Decimal? @db.Decimal(10, 4) // SEC official fund return for period
+  secBenchmarkReturnPct   Decimal? @db.Decimal(10, 4) // benchmark return for period
+  secPeerAvgReturnPct     Decimal? @db.Decimal(10, 4) // peer group average return for period
 
   fund      Fund      @relation(fields: [fundId], references: [id])
   fundClass FundClass @relation(fields: [fundClassId], references: [id])

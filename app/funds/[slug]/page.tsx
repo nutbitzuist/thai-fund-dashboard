@@ -356,6 +356,12 @@ export default async function FundDetailPage({ params }: Props) {
                     </span>
                   );
                 })()}
+                {fund.benchmark && (
+                  <span className="truncate max-w-xs">
+                    <span className="text-slate-400">Benchmark:</span>{' '}
+                    {fund.benchmark.split(' · ')[0]}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -443,7 +449,7 @@ export default async function FundDetailPage({ params }: Props) {
             </span>
           )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
           {METRIC_PERIODS.filter((p) => p !== 'MAX').map((period) => {
             const m = metricsByPeriod[period]
             const sufficient = hasSufficientData(period, m?.navCount)
@@ -464,6 +470,15 @@ export default async function FundDetailPage({ params }: Props) {
               </div>
             )
           })}
+          {fund.secReturnYtd != null && (
+            <MetricCard
+              label="YTD"
+              value={Number(fund.secReturnYtd)}
+              type="percent"
+              description="ผลตอบแทนนับจากต้นปีถึงปัจจุบัน (ข้อมูลจาก ก.ล.ต.)"
+              size="sm"
+            />
+          )}
         </div>
         {hasLimitedHistory && (
           <p className="text-xs text-slate-400 mt-2">
@@ -532,6 +547,8 @@ export default async function FundDetailPage({ params }: Props) {
                   <tr className="border-b border-slate-200">
                     <th className="text-left py-2 pr-4 text-slate-500 font-medium">ช่วงเวลา</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">ผลตอบแทน</th>
+                    <th className="text-right py-2 px-3 text-slate-500 font-medium hidden md:table-cell">Benchmark</th>
+                    <th className="text-right py-2 px-3 text-slate-500 font-medium hidden md:table-cell">Peer Avg</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Volatility</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Max Drawdown</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Sharpe</th>
@@ -559,6 +576,12 @@ export default async function FundDetailPage({ params }: Props) {
                         </td>
                         <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(m?.returnPct != null ? Number(m.returnPct) : null))}>
                           {m?.returnPct != null ? formatPct(Number(m.returnPct)) : '-'}
+                        </td>
+                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(m?.secBenchmarkReturnPct != null ? Number(m.secBenchmarkReturnPct) : null))}>
+                          {m?.secBenchmarkReturnPct != null ? formatPct(Number(m.secBenchmarkReturnPct)) : '-'}
+                        </td>
+                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(m?.secPeerAvgReturnPct != null ? Number(m.secPeerAvgReturnPct) : null))}>
+                          {m?.secPeerAvgReturnPct != null ? formatPct(Number(m.secPeerAvgReturnPct)) : '-'}
                         </td>
                         <td className="py-3 text-right text-sm tabular-nums text-slate-600">
                           {m?.annualizedVolatilityPct != null ? `${Number(m.annualizedVolatilityPct).toFixed(2)}%` : '-'}
@@ -649,6 +672,67 @@ export default async function FundDetailPage({ params }: Props) {
           </Card>
         </section>
       )}
+
+      {/* Asset Allocation */}
+      {Array.isArray(fund.assetAllocation) && (fund.assetAllocation as {asset_name:string;asset_ratio:string}[]).length > 0 && (() => {
+        const assets = fund.assetAllocation as {asset_name:string;asset_ratio:string}[]
+        const ASSET_COLORS: Record<string, string> = {
+          'ตราสารทุน':       'bg-blue-500',
+          'พันธบัตร':        'bg-emerald-500',
+          'หุ้นกู้':          'bg-teal-500',
+          'เงินฝาก':         'bg-slate-400',
+          'ตราสารตลาดเงิน': 'bg-cyan-500',
+          'กองทุนรวม':       'bg-violet-500',
+          'ตราสารอนุพันธ์':  'bg-amber-500',
+          'สินทรัพย์ทางเลือก': 'bg-orange-500',
+        }
+        const getColor = (name: string) => {
+          for (const [key, cls] of Object.entries(ASSET_COLORS)) {
+            if (name.includes(key)) return cls
+          }
+          return 'bg-slate-300'
+        }
+        return (
+          <section>
+            <Card>
+              <CardHeader>
+                <CardTitle>สัดส่วนการลงทุน (Asset Allocation)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Stacked bar */}
+                <div className="flex h-6 rounded-lg overflow-hidden mb-4 gap-px">
+                  {assets.map((a) => {
+                    const pct = parseFloat(a.asset_ratio)
+                    if (!pct) return null
+                    return (
+                      <div
+                        key={a.asset_name}
+                        className={cn(getColor(a.asset_name), 'transition-all')}
+                        style={{ width: `${pct}%` }}
+                        title={`${a.asset_name}: ${pct}%`}
+                      />
+                    )
+                  })}
+                </div>
+                {/* Legend */}
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
+                  {assets.map((a) => {
+                    const pct = parseFloat(a.asset_ratio)
+                    return (
+                      <div key={a.asset_name} className="flex items-center gap-1.5 text-sm">
+                        <span className={cn('w-3 h-3 rounded-sm shrink-0', getColor(a.asset_name))} />
+                        <span className="text-slate-600">{a.asset_name}</span>
+                        <span className="font-semibold tabular-nums text-slate-900">{pct.toFixed(1)}%</span>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-slate-400 mt-3">ข้อมูลจาก ก.ล.ต. อัปเดตรายเดือนตาม Fund Fact Sheet</p>
+              </CardContent>
+            </Card>
+          </section>
+        )
+      })()}
 
       {/* Investment Policy */}
       {fund.investmentPolicy && (

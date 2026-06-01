@@ -1,26 +1,24 @@
 /**
  * scripts/recover-db.ts
  *
- * Full automated recovery when the Neon database is deleted or unreachable.
- * Run this whenever the site is showing DB errors.
+ * Full automated DB recovery — runs locally or inside the db-recovery GitHub Action.
  *
- * What it does:
- *   1. Tests if the current DB is alive — exits early if fine
- *   2. Creates a new Neon project (requires `neon` CLI logged in)
- *   3. Pushes the Prisma schema
- *   4. Updates DATABASE_URL in Vercel (requires `vercel` CLI logged in)
- *   5. Triggers an initial data sync from the SEC API
- *   6. Redeploys to Vercel so the new URL is live
+ * Steps:
+ *   0. Check if DB is already alive (bail out if fine)
+ *   1. Create a new Neon project via REST API
+ *   2. Push Prisma schema to the new DB
+ *   3. Update DATABASE_URL in Vercel env vars via Vercel API
+ *   4. Trigger a Vercel production deployment
+ *   5. Run the initial data sync (AMCs → funds → NAVs → metrics)
+ *   6. Send Telegram status updates throughout
  *
- * Usage:
- *   npx tsx scripts/recover-db.ts
- *
- * Prerequisites:
- *   - `neon` CLI authenticated (`neon auth`)
- *   - `vercel` CLI authenticated (`vercel login`)
- *   - .env.local present (for SEC API keys and CRON_SECRET)
- *   - NEON_ORG_ID set in environment OR passed as argument:
- *       NEON_ORG_ID=org-xxx npx tsx scripts/recover-db.ts
+ * Required env vars:
+ *   NEON_API_KEY     — from console.neon.tech → Account → API Keys
+ *   NEON_ORG_ID      — your org id (e.g. org-damp-hill-91455247)
+ *   VERCEL_TOKEN     — from vercel.com → Settings → Tokens
+ *   VERCEL_PROJECT_ID — project id (prj_...)
+ *   SEC_API_KEY, SEC_NAV_API_KEY, CRON_SECRET
+ *   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
  */
 
 import { execSync, spawnSync } from 'child_process';
@@ -31,21 +29,27 @@ import { config as dotenvConfig } from 'dotenv';
 const envFile = resolve(process.cwd(), '.env.local');
 if (existsSync(envFile)) dotenvConfig({ path: envFile });
 
+// ── Config ────────────────────────────────────────────────────────────────────
 const NEON_PROJECT_NAME = 'thai-fund-dashboard';
-const VERCEL_ENV_NAME = 'DATABASE_URL';
+const NEON_ORG_ID = process.env.NEON_ORG_ID ?? 'org-damp-hill-91455247';
+const NEON_API_KEY = process.env.NEON_API_KEY ?? '';
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN ?? '';
+const VERCEL_PROJECT_ID = process.env.VERCEL_PROJECT_ID ?? 'prj_9jpnq1iVIKrOpaxE9zaa8vr5HwPB';
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
+const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT_ID ?? '';
 
-function run(cmd: string, opts: { silent?: boolean } = {}): string {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function step(msg: string) { console.log(`\n━━━ ${msg} ━━━`); }
+
+async function tg(text: string) {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT) return;
   try {
-    const out = execSync(cmd, { encoding: 'utf8', stdio: opts.silent ? 'pipe' : ['inherit', 'pipe', 'inherit'] });
-    return out.trim();
-  } catch (e: unknown) {
-    const err = e as { stdout?: string; message?: string };
-    throw new Error(err.stdout?.trim() || err.message || String(e));
-  }
-}
-
-function step(msg: string) {
-  console.log(`\n━━━ ${msg} ━━━`);
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text, parse_mode: 'HTML' }),
+    });
+  } catch { /* non-critical */ }
 }
 
 async function isDbAlive(url: string): Promise<boolean> {
@@ -56,135 +60,185 @@ async function isDbAlive(url: string): Promise<boolean> {
     await client.query('SELECT 1');
     await client.end();
     return true;
-  } catch {
-    return false;
+  } catch { return false; }
+}
+
+// ── Neon REST API ─────────────────────────────────────────────────────────────
+async function createNeonProject(): Promise<string> {
+  // Try REST API first (works in CI with NEON_API_KEY)
+  if (NEON_API_KEY) {
+    const res = await fetch('https://console.neon.tech/api/v2/projects', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NEON_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ project: { name: NEON_PROJECT_NAME, org_id: NEON_ORG_ID } }),
+    });
+    if (!res.ok) throw new Error(`Neon API error: ${await res.text()}`);
+    const data = await res.json();
+    return data.connection_uris[0].connection_uri as string;
+  }
+
+  // Fallback: neon CLI (works locally with OAuth)
+  const out = execSync(
+    `neon projects create --name "${NEON_PROJECT_NAME}" --org-id ${NEON_ORG_ID} --output json`,
+    { encoding: 'utf8' },
+  );
+  const data = JSON.parse(out);
+  return data.connection_uris[0].connection_uri as string;
+}
+
+// ── Vercel REST API ───────────────────────────────────────────────────────────
+async function updateVercelEnv(newUrl: string): Promise<void> {
+  const headers = {
+    'Authorization': `Bearer ${VERCEL_TOKEN}`,
+    'Content-Type': 'application/json',
+  };
+
+  // Find existing DATABASE_URL env var id
+  const listRes = await fetch(
+    `https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env?target=production`,
+    { headers },
+  );
+  const listData = await listRes.json();
+  const existing = (listData.envs ?? []).find((e: { key: string }) => e.key === 'DATABASE_URL');
+
+  if (existing) {
+    await fetch(`https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env/${existing.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ value: newUrl }),
+    });
+  } else {
+    await fetch(`https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ key: 'DATABASE_URL', value: newUrl, target: ['production'], type: 'encrypted' }),
+    });
   }
 }
 
-async function main() {
-  const currentUrl = process.env.DATABASE_URL;
+async function triggerVercelDeploy(): Promise<void> {
+  // Create a new deployment by re-deploying latest git commit
+  await fetch(`https://api.vercel.com/v13/deployments`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${VERCEL_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: 'thai-fund-dashboard',
+      gitSource: { type: 'github', repoId: 'nutbitzuist/thai-fund-dashboard', ref: 'main' },
+      target: 'production',
+    }),
+  });
+}
 
-  // ── Step 0: Check if DB is actually down ────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
+async function main() {
+  const currentUrl = process.env.DATABASE_URL ?? '';
+
+  // Step 0: bail if DB is fine
   step('0. Checking current database');
   if (currentUrl) {
-    console.log(`  Testing: ${currentUrl.replace(/:([^@]+)@/, ':***@')}`);
     const alive = await isDbAlive(currentUrl);
     if (alive) {
-      console.log('  ✅ Database is reachable — no recovery needed.');
+      console.log('✅ Database reachable — no recovery needed.');
       process.exit(0);
     }
-    console.log('  ❌ Database unreachable. Starting recovery...');
-  } else {
-    console.log('  ⚠️  No DATABASE_URL set. Starting fresh provisioning...');
+    console.log('❌ Database unreachable — starting recovery...');
   }
 
-  // ── Step 1: Detect Neon org ─────────────────────────────────────────────
-  step('1. Detecting Neon org');
-  let orgId = process.env.NEON_ORG_ID ?? '';
-  if (!orgId) {
-    try {
-      const orgs = JSON.parse(run('neon orgs list --output json', { silent: true }));
-      if (!orgs.length) throw new Error('No Neon orgs found — run `neon auth` first');
-      orgId = orgs[0].id;
-      console.log(`  Using org: ${orgs[0].name} (${orgId})`);
-    } catch (e) {
-      console.error('  ❌ Could not list Neon orgs:', e);
-      console.error('  Run `neon auth` to authenticate the Neon CLI, then retry.');
-      process.exit(1);
-    }
-  }
+  await tg('🔧 <b>Thai Fund Dashboard — Auto-Recovery Started</b>\nDatabase is unreachable. Provisioning a new database...');
 
-  // ── Step 2: Create new Neon project ─────────────────────────────────────
-  step('2. Creating new Neon project');
+  // Step 1: create new Neon project
+  step('1. Creating new Neon project');
   let newDbUrl: string;
   try {
-    const result = JSON.parse(
-      run(`neon projects create --name "${NEON_PROJECT_NAME}" --org-id ${orgId} --output json`, { silent: true }),
-    );
-    newDbUrl = result.connection_uris[0].connection_uri;
-    console.log(`  ✅ Project created: ${result.project.id}`);
-    console.log(`  Host: ${result.connection_uris[0].connection_parameters.host}`);
+    newDbUrl = await createNeonProject();
+    const host = new URL(newDbUrl).hostname;
+    console.log(`✅ New project: ${host}`);
+    await tg(`✅ New Neon database created\nHost: <code>${host}</code>`);
   } catch (e) {
-    console.error('  ❌ Failed to create Neon project:', e);
-    process.exit(1);
+    await tg(`❌ Recovery failed at step 1 (Neon): ${e}`);
+    throw e;
   }
 
-  // ── Step 3: Push Prisma schema ───────────────────────────────────────────
-  step('3. Pushing Prisma schema');
+  // Step 2: push Prisma schema
+  step('2. Pushing Prisma schema');
   try {
-    process.env.DATABASE_URL = newDbUrl;
-    run(`DATABASE_URL="${newDbUrl}" npx prisma db push`);
-    console.log('  ✅ Schema deployed');
-  } catch (e) {
-    console.error('  ❌ Schema push failed:', e);
-    process.exit(1);
-  }
-
-  // ── Step 4: Update .env.local ────────────────────────────────────────────
-  step('4. Updating .env.local');
-  try {
-    const { writeFileSync, readFileSync } = await import('fs');
-    let content = existsSync(envFile) ? readFileSync(envFile, 'utf8') : '';
-    if (content.includes('DATABASE_URL=')) {
-      content = content.replace(/DATABASE_URL=.*/g, `DATABASE_URL="${newDbUrl}"`);
-    } else {
-      content += `\nDATABASE_URL="${newDbUrl}"\n`;
-    }
-    writeFileSync(envFile, content);
-    console.log('  ✅ .env.local updated');
-  } catch (e) {
-    console.error('  ⚠️  Could not update .env.local:', e);
-  }
-
-  // ── Step 5: Update Vercel env ────────────────────────────────────────────
-  step('5. Updating Vercel production DATABASE_URL');
-  try {
-    // Remove old, then add new (ignore error if var doesn't exist)
-    spawnSync('vercel', ['env', 'rm', VERCEL_ENV_NAME, 'production', '--yes'], { encoding: 'utf8' });
-    const add = spawnSync(
-      'vercel',
-      ['env', 'add', VERCEL_ENV_NAME, 'production'],
-      { input: newDbUrl, encoding: 'utf8' },
-    );
-    if (add.status !== 0) throw new Error(add.stderr);
-    console.log('  ✅ Vercel env updated');
-  } catch (e) {
-    console.error('  ❌ Could not update Vercel env:', e);
-    console.error(`  Manually set DATABASE_URL="${newDbUrl}" in Vercel dashboard.`);
-  }
-
-  // ── Step 6: Start initial sync ───────────────────────────────────────────
-  step('6. Starting initial data sync (runs in background)');
-  console.log('  Syncing all funds + 90 days NAV history. This takes ~20 minutes.');
-  const sync = spawnSync(
-    'npx', ['tsx', 'scripts/initial-sync.ts'],
-    {
-      encoding: 'utf8',
+    spawnSync('npx', ['prisma', 'db', 'push', '--skip-generate'], {
       env: { ...process.env, DATABASE_URL: newDbUrl },
       stdio: 'inherit',
-      timeout: 30 * 60 * 1000, // 30 min max
-    },
-  );
-  if (sync.status !== 0) {
-    console.error('  ⚠️  Sync exited with errors — check output above. Continuing...');
-  } else {
-    console.log('  ✅ Initial sync complete');
-  }
-
-  // ── Step 7: Redeploy to Vercel ───────────────────────────────────────────
-  step('7. Redeploying to Vercel production');
-  try {
-    run('vercel deploy --prod');
-    console.log('  ✅ Deployed — site is live with new database');
+    });
+    console.log('✅ Schema deployed');
+    await tg('✅ Database schema deployed');
   } catch (e) {
-    console.error('  ❌ Deploy failed:', e);
-    console.error('  Run `vercel deploy --prod` manually.');
+    await tg(`❌ Recovery failed at step 2 (schema): ${e}`);
+    throw e;
   }
 
-  console.log(`\n✅ Recovery complete!\n   New DB: ${newDbUrl.replace(/:([^@]+)@/, ':***@')}\n`);
+  // Step 3: update Vercel env
+  step('3. Updating Vercel DATABASE_URL');
+  if (VERCEL_TOKEN) {
+    try {
+      await updateVercelEnv(newDbUrl);
+      console.log('✅ Vercel env updated');
+    } catch (e) {
+      console.error('⚠️  Vercel env update failed:', e);
+      await tg(`⚠️ Vercel env update failed — update DATABASE_URL manually:\n<code>${newDbUrl}</code>`);
+    }
+  } else {
+    // Fallback: vercel CLI
+    spawnSync('vercel', ['env', 'rm', 'DATABASE_URL', 'production', '--yes'], { encoding: 'utf8' });
+    spawnSync('vercel', ['env', 'add', 'DATABASE_URL', 'production'], {
+      input: newDbUrl, encoding: 'utf8',
+    });
+  }
+
+  // Also update .env.local if running locally
+  if (existsSync(envFile)) {
+    const { readFileSync, writeFileSync } = await import('fs');
+    let content = readFileSync(envFile, 'utf8');
+    content = content.replace(/DATABASE_URL=.*/, `DATABASE_URL="${newDbUrl}"`);
+    writeFileSync(envFile, content);
+  }
+
+  // Step 4: trigger Vercel redeploy
+  step('4. Triggering Vercel redeploy');
+  if (VERCEL_TOKEN) {
+    try {
+      await triggerVercelDeploy();
+      console.log('✅ Deployment triggered (will be live in ~2 min)');
+      await tg('✅ Vercel redeployment triggered');
+    } catch (e) {
+      console.error('⚠️  Deploy trigger failed:', e);
+    }
+  } else {
+    spawnSync('vercel', ['deploy', '--prod'], { stdio: 'inherit' });
+  }
+
+  // Step 5: initial data sync
+  step('5. Starting initial data sync (~20 min)');
+  await tg('⏳ Starting data sync from SEC API (~20 minutes)...');
+  const sync = spawnSync('npx', ['tsx', 'scripts/initial-sync.ts'], {
+    env: { ...process.env, DATABASE_URL: newDbUrl },
+    stdio: 'inherit',
+    timeout: 40 * 60 * 1000,
+  });
+  if (sync.status === 0) {
+    await tg('✅ Data sync complete — site is fully restored!');
+  } else {
+    await tg('⚠️ Sync ended with errors — partial data may be available. Check logs.');
+  }
+
+  const safeUrl = newDbUrl.replace(/:([^@]+)@/, ':***@');
+  console.log(`\n✅ Recovery complete! New DB: ${safeUrl}`);
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error('Recovery failed:', e);
+  await tg(`❌ <b>Recovery script crashed</b>\n${e}`);
   process.exit(1);
 });

@@ -1,0 +1,41 @@
+name: DB Auto-Recovery
+
+# Triggered automatically by /api/monitor when DB is unreachable,
+# or manually from GitHub Actions tab.
+on:
+  repository_dispatch:
+    types: [db-recovery]
+  workflow_dispatch:
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Neon CLI
+        run: npm install -g neonctl
+
+      - name: Run DB recovery
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          SEC_API_KEY: ${{ secrets.SEC_API_KEY }}
+          SEC_NAV_API_KEY: ${{ secrets.SEC_NAV_API_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: npx tsx scripts/recover-db.ts

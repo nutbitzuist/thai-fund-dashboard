@@ -73,7 +73,9 @@ async function getAmcStats(): Promise<AmcStats[]> {
 
 function shortAmcName(name: string): string {
   return name
+    .replace(/บริษัท\s*หลักทรัพย์จัดการกองทุนรวม/g, 'บลจ. ')
     .replace(/บริษัท\s*หลักทรัพย์จัดการกองทุน/g, 'บลจ. ')
+    .replace(/บริษัท\s*จัดการกองทุนรวม/g, 'บลจ. ')
     .replace(/บริษัท\s*จัดการกองทุน/g, 'บลจ. ')
     .replace(/จำกัด|\(มหาชน\)|\(ประเทศไทย\)|บมจ\.|บจก\./g, '')
     .replace(/,/g, '')

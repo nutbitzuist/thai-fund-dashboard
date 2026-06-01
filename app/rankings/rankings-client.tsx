@@ -134,8 +134,11 @@ function SortHeader({ label, colMetric, activeMetric, sortDir, onClick, classNam
 
 function shortAmcName(name: string): string {
   return name
-    .replace('บริษัทหลักทรัพย์จัดการกองทุน', 'บลจ.')
-    .replace(/จำกัด|\(มหาชน\)|บมจ\.|บจก\./g, '')
+    .replace(/บริษัท\s*หลักทรัพย์จัดการกองทุนรวม/g, 'บลจ. ')
+    .replace(/บริษัท\s*หลักทรัพย์จัดการกองทุน/g, 'บลจ. ')
+    .replace(/บริษัท\s*จัดการกองทุนรวม/g, 'บลจ. ')
+    .replace(/บริษัท\s*จัดการกองทุน/g, 'บลจ. ')
+    .replace(/จำกัด|\(มหาชน\)|\(ประเทศไทย\)|บมจ\.|บจก\./g, '')
     .replace(/,/g, '')
     .replace(/\s+/g, ' ')
     .trim()

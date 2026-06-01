@@ -23,19 +23,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Neon CLI
-        run: npm install -g neonctl
+      - name: Install Vercel + Neon CLIs
+        run: npm install -g vercel neonctl
+
+      - name: Authenticate Vercel CLI
+        run: |
+          mkdir -p ~/.config/com.vercel.cli
+          echo '${{ secrets.VERCEL_CLI_AUTH }}' > ~/.config/com.vercel.cli/auth.json
+          mkdir -p ~/.local/share/com.vercel.cli
+          cp ~/.config/com.vercel.cli/auth.json ~/.local/share/com.vercel.cli/auth.json
+          vercel whoami
 
       - name: Run DB recovery
+        id: recovery
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           SEC_API_KEY: ${{ secrets.SEC_API_KEY }}
           SEC_NAV_API_KEY: ${{ secrets.SEC_NAV_API_KEY }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: npx tsx scripts/recover-db.ts
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx tsx scripts/recover-db.ts
+          # After recovery, sync the new DATABASE_URL back into GitHub secrets
+          NEW_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2 || true)
+          if [ -n "$NEW_URL" ]; then
+            gh secret set DATABASE_URL --body "$NEW_URL"
+            echo "GitHub DATABASE_URL secret updated to new DB"
+          fi

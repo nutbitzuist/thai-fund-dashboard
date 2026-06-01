@@ -33,8 +33,6 @@ if (existsSync(envFile)) dotenvConfig({ path: envFile });
 const NEON_PROJECT_NAME = 'thai-fund-dashboard';
 const NEON_ORG_ID = process.env.NEON_ORG_ID ?? 'org-damp-hill-91455247';
 const NEON_API_KEY = process.env.NEON_API_KEY ?? '';
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN ?? '';
-const VERCEL_PROJECT_ID = process.env.VERCEL_PROJECT_ID ?? 'prj_9jpnq1iVIKrOpaxE9zaa8vr5HwPB';
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT_ID ?? '';
 
@@ -89,51 +87,6 @@ async function createNeonProject(): Promise<string> {
   return data.connection_uris[0].connection_uri as string;
 }
 
-// ── Vercel REST API ───────────────────────────────────────────────────────────
-async function updateVercelEnv(newUrl: string): Promise<void> {
-  const headers = {
-    'Authorization': `Bearer ${VERCEL_TOKEN}`,
-    'Content-Type': 'application/json',
-  };
-
-  // Find existing DATABASE_URL env var id
-  const listRes = await fetch(
-    `https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env?target=production`,
-    { headers },
-  );
-  const listData = await listRes.json();
-  const existing = (listData.envs ?? []).find((e: { key: string }) => e.key === 'DATABASE_URL');
-
-  if (existing) {
-    await fetch(`https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env/${existing.id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ value: newUrl }),
-    });
-  } else {
-    await fetch(`https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ key: 'DATABASE_URL', value: newUrl, target: ['production'], type: 'encrypted' }),
-    });
-  }
-}
-
-async function triggerVercelDeploy(): Promise<void> {
-  // Create a new deployment by re-deploying latest git commit
-  await fetch(`https://api.vercel.com/v13/deployments`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${VERCEL_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      name: 'thai-fund-dashboard',
-      gitSource: { type: 'github', repoId: 'nutbitzuist/thai-fund-dashboard', ref: 'main' },
-      target: 'production',
-    }),
-  });
-}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
@@ -179,22 +132,19 @@ async function main() {
     throw e;
   }
 
-  // Step 3: update Vercel env
+  // Step 3: update Vercel env via CLI
   step('3. Updating Vercel DATABASE_URL');
-  if (VERCEL_TOKEN) {
-    try {
-      await updateVercelEnv(newDbUrl);
-      console.log('✅ Vercel env updated');
-    } catch (e) {
-      console.error('⚠️  Vercel env update failed:', e);
-      await tg(`⚠️ Vercel env update failed — update DATABASE_URL manually:\n<code>${newDbUrl}</code>`);
-    }
-  } else {
-    // Fallback: vercel CLI
+  try {
     spawnSync('vercel', ['env', 'rm', 'DATABASE_URL', 'production', '--yes'], { encoding: 'utf8' });
-    spawnSync('vercel', ['env', 'add', 'DATABASE_URL', 'production'], {
-      input: newDbUrl, encoding: 'utf8',
+    const add = spawnSync('vercel', ['env', 'add', 'DATABASE_URL', 'production'], {
+      input: newDbUrl, encoding: 'utf8', stdio: ['pipe', 'inherit', 'inherit'],
     });
+    if (add.status !== 0) throw new Error('vercel env add failed');
+    console.log('✅ Vercel env updated');
+    await tg('✅ Vercel DATABASE_URL updated');
+  } catch (e) {
+    console.error('⚠️  Vercel env update failed:', e);
+    await tg(`⚠️ Vercel env update failed — update DATABASE_URL manually:\n<code>${newDbUrl}</code>`);
   }
 
   // Also update .env.local if running locally
@@ -205,18 +155,16 @@ async function main() {
     writeFileSync(envFile, content);
   }
 
-  // Step 4: trigger Vercel redeploy
-  step('4. Triggering Vercel redeploy');
-  if (VERCEL_TOKEN) {
-    try {
-      await triggerVercelDeploy();
-      console.log('✅ Deployment triggered (will be live in ~2 min)');
-      await tg('✅ Vercel redeployment triggered');
-    } catch (e) {
-      console.error('⚠️  Deploy trigger failed:', e);
-    }
-  } else {
-    spawnSync('vercel', ['deploy', '--prod'], { stdio: 'inherit' });
+  // Step 4: redeploy via CLI
+  step('4. Redeploying to Vercel production');
+  try {
+    const deploy = spawnSync('vercel', ['deploy', '--prod', '--yes'], { stdio: 'inherit', encoding: 'utf8' });
+    if (deploy.status !== 0) throw new Error('vercel deploy failed');
+    console.log('✅ Deployed — site live in ~2 min');
+    await tg('✅ Vercel redeployment triggered');
+  } catch (e) {
+    console.error('⚠️  Deploy failed:', e);
+    await tg(`⚠️ Deploy failed — run manually: vercel deploy --prod`);
   }
 
   // Step 5: initial data sync

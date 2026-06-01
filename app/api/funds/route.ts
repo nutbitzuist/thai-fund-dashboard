@@ -190,9 +190,11 @@ export async function GET(req: NextRequest) {
       const fundIds = sortedRows.map((r) => r.fundId);
 
       if (!fundIds.length) {
+        // Don't CDN-cache empty results — a zero-result response from a DB hiccup
+        // would otherwise be served stale for up to 6h+24h (max-age + swr).
         return NextResponse.json(
           { data: [], pagination: { page, limit, total: 0, totalPages: 0 } },
-          { headers: CACHE_HEADERS },
+          { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } },
         );
       }
 
@@ -275,9 +277,13 @@ export async function GET(req: NextRequest) {
       return buildFundDto(f, m1Y, m3Y);
     });
 
+    const headers = total === 0
+      ? { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' }
+      : CACHE_HEADERS;
+
     return NextResponse.json(
       { data: fundList, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } },
-      { headers: CACHE_HEADERS },
+      { headers },
     );
   } catch (err) {
     return handleRouteError(err);

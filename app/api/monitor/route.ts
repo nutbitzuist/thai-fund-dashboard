@@ -1,11 +1,11 @@
 // app/api/monitor/route.ts
-// DB connectivity monitor — called by Vercel cron every 4 hours.
-// If the database is unreachable it fires a webhook alert immediately so you
-// know within hours, not days.
+// DB connectivity monitor — called by Vercel cron every day at 08:00 UTC.
+// Sends a Telegram alert if the database is unreachable or data is stale.
 //
-// Requires:
-//   CRON_SECRET          — guards the endpoint (same secret as other crons)
-//   SYNC_ALERT_WEBHOOK_URL — Discord/Slack webhook URL (optional but recommended)
+// Requires env vars:
+//   CRON_SECRET           — guards the endpoint
+//   TELEGRAM_BOT_TOKEN    — bot token from @BotFather
+//   TELEGRAM_CHAT_ID      — your personal chat ID
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
@@ -15,17 +15,18 @@ export const dynamic = 'force-dynamic';
 
 const MAX_STALE_DAYS = 4;
 
-async function sendAlert(message: string): Promise<void> {
-  const url = process.env.SYNC_ALERT_WEBHOOK_URL;
-  if (!url) return;
+async function sendTelegram(message: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
   try {
-    await fetch(url, {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: message }),
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
     });
   } catch {
-    // Non-critical
+    // Non-critical — don't let alerting break the monitor
   }
 }
 
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   const t0 = Date.now();
   try {
-    // Test 1: raw connectivity
+    // Test 1: raw DB connectivity
     await prisma.$queryRaw`SELECT 1`;
 
     // Test 2: data freshness
@@ -50,8 +51,10 @@ export async function GET(req: NextRequest) {
       : 999;
 
     if (daysSince > MAX_STALE_DAYS) {
-      await sendAlert(
-        `⚠️ Thai Fund Dashboard — stale data\nLast NAV: ${latestNav?.navDate?.toISOString().split('T')[0] ?? 'never'} (${daysSince} days ago). Daily sync may have stopped.`,
+      await sendTelegram(
+        `⚠️ <b>Thai Fund Dashboard — ข้อมูลเก่า</b>\n` +
+        `NAV ล่าสุด: ${latestNav?.navDate?.toISOString().split('T')[0] ?? 'ไม่มีข้อมูล'} (${daysSince} วันที่แล้ว)\n` +
+        `ระบบ sync อาจหยุดทำงาน`,
       );
     }
 
@@ -61,8 +64,10 @@ export async function GET(req: NextRequest) {
     );
   } catch (err) {
     const msg = String(err);
-    await sendAlert(
-      `🚨 Thai Fund Dashboard — DATABASE DOWN\nDB unreachable as of ${new Date().toISOString()}.\nError: ${msg}\n\nRun: npx tsx scripts/recover-db.ts`,
+    await sendTelegram(
+      `🚨 <b>Thai Fund Dashboard — DATABASE DOWN</b>\n` +
+      `DB ไม่ตอบสนอง เวลา ${new Date().toISOString()}\n\n` +
+      `<code>npx tsx scripts/recover-db.ts</code>`,
     );
     return NextResponse.json(
       { ok: false, error: msg, latencyMs: Date.now() - t0 },

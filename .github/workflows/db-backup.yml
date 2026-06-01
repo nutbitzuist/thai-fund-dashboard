@@ -25,7 +25,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          # Parse connection details from DATABASE_URL
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+          pg_dump --version
           pg_dump "$DATABASE_URL" \
             --no-owner --no-acl \
             --format=custom \

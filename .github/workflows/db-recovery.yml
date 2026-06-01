@@ -48,7 +48,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx tsx scripts/recover-db.ts
+          npx tsx scripts/recover-db.ts  # calls full-restore.ts internally
           # After recovery, sync the new DATABASE_URL back into GitHub secrets
           NEW_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2 || true)
           if [ -n "$NEW_URL" ]; then

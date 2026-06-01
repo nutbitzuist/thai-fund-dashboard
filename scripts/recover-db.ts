@@ -167,18 +167,18 @@ async function main() {
     await tg(`⚠️ Deploy failed — run manually: vercel deploy --prod`);
   }
 
-  // Step 5: initial data sync
-  step('5. Starting initial data sync (~20 min)');
-  await tg('⏳ Starting data sync from SEC API (~20 minutes)...');
-  const sync = spawnSync('npx', ['tsx', 'scripts/initial-sync.ts'], {
+  // Step 5: full data restore (all 7 phases — NAVs + fees + SEC data + metrics)
+  step('5. Starting full data restore (~40 min)');
+  await tg('⏳ Starting full restore from SEC API (~40 minutes)...');
+  const sync = spawnSync('npx', ['tsx', 'scripts/full-restore.ts'], {
     env: { ...process.env, DATABASE_URL: newDbUrl },
     stdio: 'inherit',
-    timeout: 40 * 60 * 1000,
+    timeout: 60 * 60 * 1000,
   });
   if (sync.status === 0) {
-    await tg('✅ Data sync complete — site is fully restored!');
+    await tg('✅ Full restore complete — site is fully restored with all data!');
   } else {
-    await tg('⚠️ Sync ended with errors — partial data may be available. Check logs.');
+    await tg('⚠️ Restore ended with errors — partial data may be available. Check logs.');
   }
 
   const safeUrl = newDbUrl.replace(/:([^@]+)@/, ':***@');

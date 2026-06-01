@@ -68,7 +68,7 @@ async function main() {
   });
   let typedCount = 0;
   for (const fund of untyped) {
-    const fundType = inferFundType(fund.nameTh, fund.nameEn ?? '');
+    const fundType = inferFundType(fund.nameTh, fund.nameEn, null);
     const riskLevel = inferRiskLevel(fund.nameTh, fund.nameEn ?? '');
     if (fundType || riskLevel) {
       await prisma.fund.update({ where: { id: fund.id }, data: { fundType, riskLevel } });
@@ -82,14 +82,15 @@ async function main() {
   const p3 = Date.now();
   const fundsWithClasses = await prisma.fund.findMany({
     where: { fundClasses: { some: {} } },
-    select: { id: true, fundClasses: { select: { id: true, isDefault: true, projAbbrName: true } } },
+    select: { id: true, fundClasses: { select: { id: true, isDefault: true, classAbbrName: true } } },
   });
   let fixedCount = 0;
   for (const fund of fundsWithClasses) {
     const hasDefault = fund.fundClasses.some(c => c.isDefault);
     if (!hasDefault && fund.fundClasses.length > 0) {
-      // Pick the class with "-A" suffix, or first one
-      const preferred = fund.fundClasses.find(c => c.projAbbrName?.endsWith('-A')) ?? fund.fundClasses[0];
+      // Prefer class with "A" suffix, else first alphabetically
+      const sorted = [...fund.fundClasses].sort((a, b) => a.classAbbrName.localeCompare(b.classAbbrName));
+      const preferred = sorted.find(c => c.classAbbrName.endsWith('-A')) ?? sorted[0];
       await prisma.fundClass.update({ where: { id: preferred.id }, data: { isDefault: true } });
       fixedCount++;
     }

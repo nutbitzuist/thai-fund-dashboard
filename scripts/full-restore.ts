@@ -69,7 +69,7 @@ async function main() {
   let typedCount = 0;
   for (const fund of untyped) {
     const fundType = inferFundType(fund.nameTh, fund.nameEn, null);
-    const riskLevel = inferRiskLevel(fund.nameTh, fund.nameEn ?? '');
+    const riskLevel = inferRiskLevel(fundType, null);
     if (fundType || riskLevel) {
       await prisma.fund.update({ where: { id: fund.id }, data: { fundType, riskLevel } });
       typedCount++;

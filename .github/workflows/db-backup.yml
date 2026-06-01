@@ -1,0 +1,45 @@
+name: Daily DB Backup
+
+# Runs every day at 14:00 UTC (21:00 Bangkok) — after the 18:30 daily sync
+on:
+  schedule:
+    - cron: '0 14 * * *'
+  workflow_dispatch:  # allow manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install pg_dump
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Parse connection details from DATABASE_URL
+          pg_dump "$DATABASE_URL" \
+            --no-owner --no-acl \
+            --format=custom \
+            --file=backup.dump
+          echo "Backup size: $(du -sh backup.dump | cut -f1)"
+
+      - name: Upload backup as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_number }}-${{ github.run_id }}
+          path: backup.dump
+          retention-days: 30
+
+      - name: Notify Telegram
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          SIZE=$(du -sh backup.dump | cut -f1)
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT}" \
+            -d text="✅ Daily DB backup complete (${SIZE}) — retained 30 days" \
+            -d parse_mode="HTML"

@@ -10,7 +10,7 @@ on:
 jobs:
   recover:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install system tools
+        run: sudo apt-get install -y postgresql-client
+
       - name: Install Vercel + Neon CLIs
         run: npm install -g vercel neonctl
 
@@ -34,8 +37,48 @@ jobs:
           cp ~/.config/com.vercel.cli/auth.json ~/.local/share/com.vercel.cli/auth.json
           vercel whoami
 
-      - name: Run DB recovery
-        id: recovery
+      # ── Step 1: Try to restore from latest backup (fast path: ~5 min) ──────
+      - name: Download latest backup artifact
+        id: download_backup
+        uses: actions/download-artifact@v4
+        with:
+          name: db-backup-*
+          path: ./backup
+        continue-on-error: true
+
+      - name: Create new Neon project + restore from backup
+        id: restore_backup
+        if: steps.download_backup.outcome == 'success'
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Create project
+          PROJECT=$(neon projects create \
+            --name thai-fund-dashboard \
+            --org-id $NEON_ORG_ID \
+            --output json)
+          NEW_URL=$(echo $PROJECT | python3 -c "import sys,json; print(json.load(sys.stdin)['connection_uris'][0]['connection_uri'])")
+          echo "NEW_DB_URL=$NEW_URL" >> $GITHUB_ENV
+
+          # Push schema
+          DATABASE_URL="$NEW_URL" npx prisma db push --skip-generate
+
+          # Restore from backup
+          BACKUP_FILE=$(find ./backup -name "*.dump" | head -1)
+          pg_restore --dburl "$NEW_URL" --no-owner --no-acl -d "$NEW_URL" "$BACKUP_FILE"
+
+          # Notify
+          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d text="✅ DB restored from backup in ~5 min!" \
+            -d parse_mode="HTML"
+
+      # ── Step 2: Full SEC API re-sync fallback (slow path: ~40 min) ──────────
+      - name: Run full recovery (no backup available)
+        if: steps.download_backup.outcome != 'success' || steps.restore_backup.outcome != 'success'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
@@ -47,11 +90,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx tsx scripts/recover-db.ts
+
+      # ── Step 3: Update Vercel env + redeploy ─────────────────────────────
+      - name: Update Vercel DATABASE_URL + redeploy
+        if: env.NEW_DB_URL != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx tsx scripts/recover-db.ts  # calls full-restore.ts internally
-          # After recovery, sync the new DATABASE_URL back into GitHub secrets
-          NEW_URL=$(grep DATABASE_URL .env.local | cut -d'"' -f2 || true)
-          if [ -n "$NEW_URL" ]; then
-            gh secret set DATABASE_URL --body "$NEW_URL"
-            echo "GitHub DATABASE_URL secret updated to new DB"
-          fi
+          vercel env rm DATABASE_URL production --yes || true
+          echo "$NEW_DB_URL" | vercel env add DATABASE_URL production
+          vercel deploy --prod --yes
+          gh secret set DATABASE_URL --body "$NEW_DB_URL"

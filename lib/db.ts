@@ -70,7 +70,9 @@ function createPrismaClient() {
   // ── Standard pg adapter (non-Neon: Railway, local standard PG) ──────
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { PrismaPg } = require('@prisma/adapter-pg');
-  const adapter = new PrismaPg({ connectionString, max: 1 });
+  // max: 5 — allows parallel queries within a single serverless invocation.
+  // Each Vercel function instance is isolated, so 5 per-instance is safe.
+  const adapter = new PrismaPg({ connectionString, max: 5 });
   return new PrismaClient({ adapter, log });
 }
 

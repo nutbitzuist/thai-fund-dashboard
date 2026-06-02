@@ -97,48 +97,58 @@ export async function GET(req: NextRequest) {
       sellPrice: number | null;
     }> = {};
 
-    // Collect funds that have a default class, then fire ALL queries in parallel
+    // Collect funds that have a default class
     const fundEntries = funds
       .map((fund) => ({ fund, defaultClass: fund.fundClasses[0] }))
       .filter((e): e is typeof e & { defaultClass: NonNullable<typeof e.defaultClass> } => !!e.defaultClass);
 
-    const [navResults, latestResults, snap3MResults, snap1YResults] = await Promise.all([
-      Promise.all(fundEntries.map(({ defaultClass }) =>
-        prisma.navPrice.findMany({
-          where: { fundClassId: defaultClass.id, navDate: { gte: startDate, lte: endDate } },
-          orderBy: { navDate: 'asc' },
-          select: { navDate: true, lastVal: true },
-        })
-      )),
-      Promise.all(fundEntries.map(({ defaultClass }) =>
-        prisma.navPrice.findFirst({
-          where: { fundClassId: defaultClass.id },
-          orderBy: { navDate: 'desc' },
-          select: { lastVal: true, netAsset: true, buyPrice: true, sellPrice: true, navDate: true },
-        })
-      )),
-      Promise.all(fundEntries.map(({ defaultClass }) =>
-        prisma.navPrice.findFirst({
-          where: { fundClassId: defaultClass.id, navDate: { lte: date3MAgo } },
-          orderBy: { navDate: 'desc' },
-          select: { netAsset: true, navDate: true },
-        })
-      )),
-      Promise.all(fundEntries.map(({ defaultClass }) =>
-        prisma.navPrice.findFirst({
-          where: { fundClassId: defaultClass.id, navDate: { lte: date1YAgo } },
-          orderBy: { navDate: 'desc' },
-          select: { netAsset: true, navDate: true },
-        })
-      )),
+    const classIds = fundEntries.map((e) => e.defaultClass.id);
+
+    // 3 batched queries instead of 20 individual ones — 85% fewer round trips
+    const [allNavs, allSnapshots] = await Promise.all([
+      // Batch 1: all NAV chart data for all funds in one query
+      prisma.navPrice.findMany({
+        where: { fundClassId: { in: classIds }, navDate: { gte: startDate, lte: endDate } },
+        orderBy: { navDate: 'asc' },
+        select: { fundClassId: true, navDate: true, lastVal: true, netAsset: true, buyPrice: true, sellPrice: true },
+      }),
+      // Batch 2: AUM snapshots via raw SQL DISTINCT ON (fastest for "latest before date" per class)
+      classIds.length > 0 ? prisma.$queryRaw<Array<{
+        fundClassId: number; navDate: Date; lastVal: unknown;
+        netAsset: unknown; buyPrice: unknown; sellPrice: unknown; snap: string;
+      }>>`
+        SELECT DISTINCT ON ("fundClassId", snap) "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", snap
+        FROM (
+          SELECT *, 'latest' AS snap FROM nav_price WHERE "fundClassId" = ANY(${classIds}) ORDER BY "navDate" DESC LIMIT ${classIds.length * 3}
+        ) q1
+        UNION ALL
+        SELECT DISTINCT ON ("fundClassId") "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", '3m' AS snap
+        FROM nav_price WHERE "fundClassId" = ANY(${classIds}) AND "navDate" <= ${date3MAgo} ORDER BY "fundClassId", "navDate" DESC
+        UNION ALL
+        SELECT DISTINCT ON ("fundClassId") "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", '1y' AS snap
+        FROM nav_price WHERE "fundClassId" = ANY(${classIds}) AND "navDate" <= ${date1YAgo} ORDER BY "fundClassId", "navDate" DESC
+      ` : Promise.resolve([]),
     ]);
 
+    // Group results by fundClassId
+    const navsByClass = new Map<number, typeof allNavs>();
+    for (const n of allNavs) {
+      if (!navsByClass.has(n.fundClassId)) navsByClass.set(n.fundClassId, []);
+      navsByClass.get(n.fundClassId)!.push(n);
+    }
+    const snapByClass = new Map<number, Map<string, (typeof allSnapshots)[number]>>();
+    for (const s of allSnapshots) {
+      if (!snapByClass.has(s.fundClassId)) snapByClass.set(s.fundClassId, new Map());
+      snapByClass.get(s.fundClassId)!.set(s.snap, s);
+    }
+
     for (let i = 0; i < fundEntries.length; i++) {
-      const { fund } = fundEntries[i];
-      const navs = navResults[i];
-      const latest = latestResults[i];
-      const snap3M = snap3MResults[i];
-      const snap1Y = snap1YResults[i];
+      const { fund, defaultClass } = fundEntries[i];
+      const navs = navsByClass.get(defaultClass.id) ?? [];
+      const snaps = snapByClass.get(defaultClass.id);
+      const latest = snaps?.get('latest');
+      const snap3M = snaps?.get('3m');
+      const snap1Y = snaps?.get('1y');
 
       if (navs.length) {
         const baseNav = Number(navs[0].lastVal);

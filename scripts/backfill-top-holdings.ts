@@ -145,7 +145,7 @@ async function main() {
 
       await prisma.fund.update({
         where: { id: fund.id },
-        data: { topHoldings: holdings },
+        data: { topHoldings: holdings as unknown as Prisma.InputJsonValue },
       });
       ok++;
     } catch {

@@ -52,6 +52,7 @@ model Fund {
   assetAllocation   Json?    // [{asset_name: string, asset_ratio: string}] from /asset
   benchmark         String?  // primary benchmark name(s) from /benchmark, joined with " · "
   secReturnYtd      Decimal? @db.Decimal(10, 4) // SEC-reported YTD return %
+  topHoldings       Json?    // [{name: string, pct: number}] top 5 holdings parsed from factsheet PDF
   createdAt         DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

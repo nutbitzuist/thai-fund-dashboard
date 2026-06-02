@@ -13,7 +13,7 @@ import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowLeft, GitCompare, ExternalLink, AlertTriangle, Clock, TrendingUp, TrendingDown, FileText } from 'lucide-react'
+import { ArrowLeft, ExternalLink, AlertTriangle, Clock, TrendingUp, TrendingDown, FileText } from 'lucide-react'
 import prisma from '@/lib/db'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { RiskBadge } from '@/components/metrics/risk-badge'
 import { MetricCard } from '@/components/metrics/metric-card'
 import { WatchlistButton } from '@/components/fund/watchlist-button'
+import { ShareFundButton } from '@/components/fund/share-fund-button'
 import { FundCharts } from './fund-charts'
 import { SimilarFunds, SimilarFundsSkeleton } from './similar-funds'
 import { CategoryStats, CategoryStatsSkeleton } from './category-stats'
@@ -264,7 +265,7 @@ export default async function FundDetailPage({ params }: Props) {
           <ArrowLeft className="h-4 w-4" />
           กลับไปค้นหากองทุน
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <WatchlistButton
             fund={{
               projId: fund.projId,
@@ -280,15 +281,18 @@ export default async function FundDetailPage({ params }: Props) {
           >
             <Button variant="outline" size="sm">
               <FileText className="h-4 w-4 mr-1.5" />
-              Fund Fact Sheet
+              <span className="hidden sm:inline">Fund Fact Sheet</span>
+              <span className="sm:hidden">Fact Sheet</span>
             </Button>
           </a>
-          <Link href={compareUrl}>
-            <Button variant="outline" size="sm">
-              <GitCompare className="h-4 w-4 mr-1.5" />
-              เพิ่มเข้าเปรียบเทียบ
-            </Button>
-          </Link>
+          <ShareFundButton
+            abbr={abbr}
+            nameTh={fund.nameTh}
+            return1Y={my1YReturn}
+            fundPageUrl={fundUrl_}
+            compareUrl={compareUrl}
+            twinUrl={`/tools/twin?projId=${encodeURIComponent(fund.projId)}`}
+          />
         </div>
       </div>
 
@@ -672,6 +676,43 @@ export default async function FundDetailPage({ params }: Props) {
           </Card>
         </section>
       )}
+
+      {/* Top Holdings */}
+      {Array.isArray(fund.topHoldings) && (fund.topHoldings as {name:string;pct:number}[]).length > 0 && (() => {
+        const holdings = fund.topHoldings as {name:string;pct:number}[]
+        const maxPct = Math.max(...holdings.map(h => h.pct))
+        return (
+          <section>
+            <Card>
+              <CardHeader>
+                <CardTitle>ถือครองหลัก (Top Holdings)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {holdings.map((h, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-sm text-slate-800 truncate">{h.name}</span>
+                          <span className="text-sm font-semibold text-slate-900 shrink-0">{h.pct.toFixed(2)}%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-blue-500"
+                            style={{ width: `${(h.pct / maxPct) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-3">ข้อมูลจาก Fund Factsheet ล่าสุด</p>
+              </CardContent>
+            </Card>
+          </section>
+        )
+      })()}
 
       {/* Asset Allocation */}
       {Array.isArray(fund.assetAllocation) && (fund.assetAllocation as {asset_name:string;asset_ratio:string}[]).length > 0 && (() => {

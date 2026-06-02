@@ -112,10 +112,10 @@ async function main() {
   console.log(`✅ SEC performance done (${elapsed(p5)})`);
 
   // ── Phase 6: NAV history ─────────────────────────────────────────────────
-  step('6. NAV history (90 days)');
+  step('6. NAV history (400 days)');
   const p6 = Date.now();
-  await tg('⏳ Phase 6: Fetching 90 days of NAV data...');
-  const DAYS = 90, BATCH = 20, DELAY = 1500;
+  await tg('⏳ Phase 6: Fetching 400 days of NAV data...');
+  const DAYS = 400, BATCH = 20, DELAY = 1500;
   const endDate = getLastWeekday();
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - DAYS);

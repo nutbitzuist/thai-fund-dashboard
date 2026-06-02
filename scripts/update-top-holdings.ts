@@ -74,8 +74,9 @@ async function downloadPdf(projId: string): Promise<boolean> {
   } catch { return false; }
 }
 
-function extractText(): string {
-  try { return execSync(`pdftotext -layout "${TMP_PDF}" -`, { encoding: 'utf8', timeout: 15000 }); }
+function extractText(layout = true): string {
+  const flag = layout ? '-layout' : '';
+  try { return execSync(`pdftotext ${flag} "${TMP_PDF}" -`, { encoding: 'utf8', timeout: 15000 }); }
   catch { return ''; }
 }
 
@@ -94,32 +95,87 @@ function parseAsOfDate(text: string): string | null {
   return `${parseInt(m[3]) - 543}-${month}-${day}`;
 }
 
-function parseHoldings(text: string): Array<{name: string; pct: number}> {
+const SECTION_HEADERS = [
+  'ทรัพย์สินที่ลงทุน 5 อันดับแรก',
+  '5 อันดับแรกของกองทุนหลัก',
+  'การจัดสรรการลงทุนในผู้ออกตราสาร 5 อันดับแรก',
+];
+const BAD_NAME = [/^\d+\.?\d*$/, /^[\s]*$/, /% ?NAV/i,
+  /^ทรัพย์สิน/, /^ชื่อ/, /^ผู้ออก/, /^ประเภท/, /^Holding/i,
+  /ของพอร์ต/, /^สัดส่วน/];
+
+function isValidName(name: string): boolean {
+  return !!name && name.trim().length >= 2 && !BAD_NAME.some(p => p.test(name.trim()));
+}
+
+function parseWithLayout(text: string): Array<{name: string; pct: number}> {
   const lines = text.split('\n');
   const sectionIdx = lines.findIndex(l =>
-    l.includes('ทรัพย์สินที่ลงทุน 5 อันดับแรก') ||
+    SECTION_HEADERS.some(h => l.includes(h)) ||
     (l.includes('Holding') && l.includes('%NAV')) ||
     (l.includes('ทรัพย์สิน') && l.includes('% NAV'))
   );
   if (sectionIdx === -1) return [];
-
+  const window = lines.slice(sectionIdx, sectionIdx + 30);
   const holdings: Array<{name: string; pct: number}> = [];
-  for (const line of lines.slice(sectionIdx, sectionIdx + 20)) {
-    const match = line.match(/^\s{30,}(.+?)\s{2,}(\d{1,3}\.\d{1,2})\s*$/);
-    if (!match) continue;
-    const name = match[1].trim();
-    const pct = parseFloat(match[2]);
-    if (
-      !name ||
-      /^\d+\.?\d*$/.test(name) ||
-      name.includes('% NAV') || name.includes('%NAV') ||
-      name.includes('ทรัพย์สิน') || name.includes('Holding') ||
-      pct <= 0 || pct > 100
-    ) continue;
-    holdings.push({ name, pct });
-    if (holdings.length >= 10) break;
+  const usedPcts = new Set<number>();
+
+  for (let i = 0; i < window.length; i++) {
+    const line = window[i];
+    const m1 = line.match(/^\s{30,}(.+?)\s{2,}(\d{1,3}\.\d{1,2})\s*$/);
+    if (m1) {
+      const name = m1[1].trim(); const pct = parseFloat(m1[2]);
+      if (isValidName(name) && pct > 0 && pct <= 100 && !usedPcts.has(pct)) {
+        holdings.push({ name, pct }); usedPcts.add(pct); continue;
+      }
+    }
+    const m2 = line.match(/^\s{50,}(\d{1,3}\.\d{1,2})\s*$/);
+    if (m2) {
+      const pct = parseFloat(m2[1]);
+      if (pct > 0 && pct <= 100 && !usedPcts.has(pct)) {
+        for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
+          const nm = window[j].match(/^\s{30,}([^\d%].+?)\s*$/);
+          if (nm && isValidName(nm[1].trim())) {
+            holdings.push({ name: nm[1].trim(), pct }); usedPcts.add(pct); break;
+          }
+        }
+      }
+      continue;
+    }
   }
-  return holdings.sort((a, b) => b.pct - a.pct).slice(0, 5);
+  return holdings;
+}
+
+function parseNoLayout(text: string): Array<{name: string; pct: number}> {
+  const lines = text.split('\n').map(l => l.trim());
+  const sectionIdx = lines.findIndex(l => SECTION_HEADERS.some(h => l.includes(h)));
+  if (sectionIdx === -1) return [];
+  const SKIP = [/^% ?NAV$/i, /^ชื่อ/, /^ผู้ออก/, /^ประเภท/, /^\(ข้อมูล/,
+                /^หน่วยลงทุน/, /^เงินฝาก/, /^ตราสาร/, /^พันธบัตร/];
+  const holdings: Array<{name: string; pct: number}> = [];
+  let nameAccum: string[] = [];
+  for (const line of lines.slice(sectionIdx + 1, sectionIdx + 50)) {
+    if (!line) { nameAccum = []; continue; }
+    const pctOnly = line.match(/^(\d{1,3}\.\d{1,2})$/);
+    if (pctOnly) {
+      const pct = parseFloat(pctOnly[1]);
+      if (pct > 0 && pct <= 100 && nameAccum.length > 0) {
+        const name = nameAccum.join(' ').replace(/\s+/g, ' ').trim();
+        if (isValidName(name)) holdings.push({ name, pct });
+      }
+      nameAccum = []; continue;
+    }
+    if (SKIP.some(p => p.test(line)) || /^\d+\.?\d*$/.test(line)) { nameAccum = []; continue; }
+    nameAccum.push(line);
+  }
+  return holdings;
+}
+
+function parseHoldings(layoutText: string, noLayoutText: string): Array<{name: string; pct: number}> {
+  const h1 = parseWithLayout(layoutText);
+  const h2 = parseNoLayout(noLayoutText);
+  const h = h2.length > h1.length ? h2 : h1;
+  return h.sort((a, b) => b.pct - a.pct).slice(0, 5);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -161,10 +217,11 @@ async function main() {
       const downloaded = await downloadPdf(fund.projId);
       if (!downloaded) { noPdf++; continue; }
 
-      const text = extractText();
-      if (!text) { noPdf++; continue; }
+      const layoutText = extractText(true);
+      const noLayoutText = extractText(false);
+      if (!layoutText && !noLayoutText) { noPdf++; continue; }
 
-      const holdings = parseHoldings(text);
+      const holdings = parseHoldings(layoutText, noLayoutText);
       if (!holdings.length) { noData++; continue; }
 
       const asOf = parseAsOfDate(text);

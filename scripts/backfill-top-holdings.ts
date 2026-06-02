@@ -57,28 +57,51 @@ async function downloadPdf(projId: string): Promise<boolean> {
 }
 
 // ── PDF text extraction ───────────────────────────────────────────────────────
-function extractText(): string {
+function extractText(layout = true): string {
+  const flag = layout ? '-layout' : '';
   try {
-    return execSync(`pdftotext -layout "${TMP_PDF}" -`, { encoding: 'utf8', timeout: 15000 });
+    return execSync(`pdftotext ${flag} "${TMP_PDF}" -`, { encoding: 'utf8', timeout: 15000 });
   } catch {
     return '';
   }
 }
 
 // ── Holdings parser ───────────────────────────────────────────────────────────
-// The SEC factsheet standard template has a right-hand column showing:
-//   "ทรัพย์สินที่ลงทุน 5 อันดับแรก"  (top 5 securities)
-//   OR
-//   "Holding  %NAV"
-// followed by rows of:  [lots of spaces] name [spaces] percentage
+// SEC factsheets use several different layouts:
+//  A. Single-column: name + pct on same indented line (most common)
+//  B. Two-column: left=asset types, right=holdings; pct on its own line below name
+//  C. Bond/money-market: "การจัดสรรการลงทุนในผู้ออกตราสาร 5 อันดับแรก" header
+//  D. Fund-of-funds: "5 อันดับแรกของกองทุนหลัก" header
 //
-// Strategy: find the section, then extract name+pct pairs from lines with
-// significant leading whitespace (right column) and a trailing decimal number.
+// Strategy: try -layout pass first (handles A well). For each line:
+//   Case 1 — name+pct on same line (layout A)
+//   Case 2 — pct on its own right-column line; grab name from preceding line (layout B)
+// If that yields < 2 valid entries, try a second pass without -layout (handles C/D).
 
 interface Holding { name: string; pct: number }
 
+const SECTION_HEADERS = [
+  'ทรัพย์สินที่ลงทุน 5 อันดับแรก',
+  '5 อันดับแรกของกองทุนหลัก',
+  'การจัดสรรการลงทุนในผู้ออกตราสาร 5 อันดับแรก',
+];
+
+const BAD_NAME_PATTERNS = [
+  /^\d+\.?\d*$/,                    // bare number
+  /^[\s]*$/,                        // blank
+  /% ?NAV/i,
+  /^ทรัพย์สิน/, /^ชื่อ/, /^ผู้ออก/, /^ประเภท/,
+  /^Holding/i,
+  /ของพอร์ต/,                       // column header in fund-of-funds PDFs
+  /^สัดส่วน/,                       // "สัดส่วน %" column header
+];
+
+function isValidName(name: string): boolean {
+  if (!name || name.trim().length < 2) return false;
+  return !BAD_NAME_PATTERNS.some(p => p.test(name.trim()));
+}
+
 // ── "As of" date parser ───────────────────────────────────────────────────────
-// Extracts "ข้อมูล ณ วันที่ 30 เมษายน 2569" → "2026-04-30"
 const THAI_MONTHS: Record<string, string> = {
   'มกราคม': '01', 'กุมภาพันธ์': '02', 'มีนาคม': '03', 'เมษายน': '04',
   'พฤษภาคม': '05', 'มิถุนายน': '06', 'กรกฎาคม': '07', 'สิงหาคม': '08',
@@ -91,41 +114,104 @@ function parseAsOfDate(text: string): string | null {
   const day = m[1].padStart(2, '0');
   const month = THAI_MONTHS[m[2]];
   if (!month) return null;
-  const yearAD = parseInt(m[3]) - 543; // Buddhist Era → AD
+  const yearAD = parseInt(m[3]) - 543;
   return `${yearAD}-${month}-${day}`;
 }
 
-function parseHoldings(text: string): Holding[] {
+// Pass 1: -layout text (preserves column positions)
+function parseWithLayout(text: string): Holding[] {
   const lines = text.split('\n');
-
-  // Find the "5 อันดับแรก" section index — look for the securities section
-  const sectionIdx = lines.findIndex(l =>
-    l.includes('ทรัพย์สินที่ลงทุน 5 อันดับแรก') ||
-    l.includes('Holding') && l.includes('%NAV') ||
-    l.includes('ทรัพย์สิน') && l.includes('% NAV')
+  const sectionIdx = lines.findIndex(l => SECTION_HEADERS.some(h => l.includes(h)) ||
+    (l.includes('Holding') && l.includes('%NAV')) ||
+    (l.includes('ทรัพย์สิน') && l.includes('% NAV'))
   );
   if (sectionIdx === -1) return [];
 
+  const window = lines.slice(sectionIdx, sectionIdx + 30);
   const holdings: Holding[] = [];
-  // Scan next 15 lines after the header for holding rows
-  const window = lines.slice(sectionIdx, sectionIdx + 20);
+  const usedPcts = new Set<number>();
 
-  for (const line of window) {
-    const match = line.match(/^\s{30,}(.+?)\s{2,}(\d{1,3}\.\d{1,2})\s*$/);
-    if (!match) continue;
-    const name = match[1].trim();
-    const pct = parseFloat(match[2]);
-    if (
-      !name ||
-      /^\d+\.?\d*$/.test(name) ||           // name is just a number → bad parse
-      name.includes('% NAV') || name.includes('%NAV') ||
-      name.includes('ทรัพย์สิน') || name.includes('Holding') ||
-      pct <= 0 || pct > 100
-    ) continue;
-    holdings.push({ name, pct });
-    if (holdings.length >= 10) break;       // collect up to 10, trim after sorting
+  for (let i = 0; i < window.length; i++) {
+    const line = window[i];
+
+    // Case 1: name + pct on same line
+    const m1 = line.match(/^\s{30,}(.+?)\s{2,}(\d{1,3}\.\d{1,2})\s*$/);
+    if (m1) {
+      const name = m1[1].trim();
+      const pct = parseFloat(m1[2]);
+      if (isValidName(name) && pct > 0 && pct <= 100 && !usedPcts.has(pct)) {
+        holdings.push({ name, pct });
+        usedPcts.add(pct);
+        continue;
+      }
+    }
+
+    // Case 2: pct alone on right-column line (50+ leading spaces, nothing else)
+    const m2 = line.match(/^\s{50,}(\d{1,3}\.\d{1,2})\s*$/);
+    if (m2) {
+      const pct = parseFloat(m2[1]);
+      if (pct > 0 && pct <= 100 && !usedPcts.has(pct)) {
+        // Name is on the nearest preceding right-column line
+        for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
+          const prev = window[j];
+          const nm = prev.match(/^\s{30,}([^\d%].+?)\s*$/);
+          if (nm) {
+            const name = nm[1].trim();
+            if (isValidName(name)) {
+              holdings.push({ name, pct });
+              usedPcts.add(pct);
+              break;
+            }
+          }
+        }
+      }
+      continue;
+    }
   }
 
+  return holdings;
+}
+
+// Pass 2: no -layout (line-by-line, pct on its own line directly after name)
+function parseNoLayout(text: string): Holding[] {
+  const lines = text.split('\n').map(l => l.trim());
+  const sectionIdx = lines.findIndex(l => SECTION_HEADERS.some(h => l.includes(h)));
+  if (sectionIdx === -1) return [];
+
+  const SKIP = [/^% ?NAV$/i, /^ชื่อ/, /^ผู้ออก/, /^ประเภท/, /^\(ข้อมูล/,
+                /^หน่วยลงทุน/, /^เงินฝาก/, /^ตราสาร/, /^พันธบัตร/];
+
+  const holdings: Holding[] = [];
+  const window = lines.slice(sectionIdx + 1, sectionIdx + 50);
+  let nameAccum: string[] = [];
+
+  for (const line of window) {
+    if (!line) { nameAccum = []; continue; }
+
+    const pctOnly = line.match(/^(\d{1,3}\.\d{1,2})$/);
+    if (pctOnly) {
+      const pct = parseFloat(pctOnly[1]);
+      if (pct > 0 && pct <= 100 && nameAccum.length > 0) {
+        const name = nameAccum.join(' ').replace(/\s+/g, ' ').trim();
+        if (isValidName(name)) holdings.push({ name, pct });
+      }
+      nameAccum = [];
+      continue;
+    }
+
+    if (SKIP.some(p => p.test(line))) { nameAccum = []; continue; }
+    if (/^\d+\.?\d*$/.test(line)) { nameAccum = []; continue; } // asset-type % from left col
+    nameAccum.push(line);
+  }
+
+  return holdings;
+}
+
+function parseHoldings(layoutText: string, noLayoutText: string): Holding[] {
+  const h1 = parseWithLayout(layoutText);
+  const h2 = parseNoLayout(noLayoutText);
+  // Always prefer whichever pass found more holdings
+  const holdings = h2.length > h1.length ? h2 : h1;
   return holdings.sort((a, b) => b.pct - a.pct).slice(0, 5);
 }
 
@@ -157,13 +243,14 @@ async function main() {
       const downloaded = await downloadPdf(fund.projId);
       if (!downloaded) { noPdf++; continue; }
 
-      const text = extractText();
-      if (!text) { noPdf++; continue; }
+      const layoutText = extractText(true);
+      const noLayoutText = extractText(false);
+      if (!layoutText && !noLayoutText) { noPdf++; continue; }
 
-      const holdings = parseHoldings(text);
+      const holdings = parseHoldings(layoutText, noLayoutText);
       if (!holdings.length) { noData++; continue; }
 
-      const asOf = parseAsOfDate(text);
+      const asOf = parseAsOfDate(layoutText || noLayoutText);
       await prisma.fund.update({
         where: { id: fund.id },
         data: {
@@ -173,8 +260,9 @@ async function main() {
         },
       });
       ok++;
-    } catch {
+    } catch (e) {
       errors++;
+      if (errors <= 3) console.error('\n  error:', e);
     } finally {
       if (existsSync(TMP_PDF)) unlinkSync(TMP_PDF);
     }

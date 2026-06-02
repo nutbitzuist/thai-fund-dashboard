@@ -53,6 +53,8 @@ model Fund {
   benchmark         String?  // primary benchmark name(s) from /benchmark, joined with " · "
   secReturnYtd      Decimal? @db.Decimal(10, 4) // SEC-reported YTD return %
   topHoldings       Json?    // [{name: string, pct: number}] top 5 holdings parsed from factsheet PDF
+  topHoldingsAsOf   String?  // "as of" date from factsheet e.g. "2026-04-30"
+  topHoldingsUpdatedAt DateTime? // when we last fetched/parsed the holdings
   createdAt         DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

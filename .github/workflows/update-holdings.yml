@@ -1,0 +1,36 @@
+name: Monthly Holdings Update
+
+# SEC requires AMCs to update factsheets within 30 days after month-end.
+# The /asset endpoint's last_upd_date typically shows ~25th of following month.
+# We run on the 26th to catch all updated funds.
+on:
+  schedule:
+    - cron: '0 2 26 * *'  # 02:00 UTC on the 26th = 09:00 Bangkok
+  workflow_dispatch:       # allow manual trigger anytime
+
+jobs:
+  update-holdings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120   # 2 hours max (smart update is much faster than full backfill)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pdftotext (poppler)
+        run: sudo apt-get install -y poppler-utils
+
+      - name: Run smart holdings update
+        env:
+          DATABASE_URL:        ${{ secrets.DATABASE_URL }}
+          SEC_API_KEY:         ${{ secrets.SEC_API_KEY }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: npx tsx scripts/update-top-holdings.ts

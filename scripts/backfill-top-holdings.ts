@@ -77,6 +77,24 @@ function extractText(): string {
 
 interface Holding { name: string; pct: number }
 
+// ── "As of" date parser ───────────────────────────────────────────────────────
+// Extracts "ข้อมูล ณ วันที่ 30 เมษายน 2569" → "2026-04-30"
+const THAI_MONTHS: Record<string, string> = {
+  'มกราคม': '01', 'กุมภาพันธ์': '02', 'มีนาคม': '03', 'เมษายน': '04',
+  'พฤษภาคม': '05', 'มิถุนายน': '06', 'กรกฎาคม': '07', 'สิงหาคม': '08',
+  'กันยายน': '09', 'ตุลาคม': '10', 'พฤศจิกายน': '11', 'ธันวาคม': '12',
+};
+
+function parseAsOfDate(text: string): string | null {
+  const m = text.match(/ข้อมูล\s*ณ\s*วันที่\s*(\d{1,2})\s*([฀-๿]+)\s*(\d{4})/);
+  if (!m) return null;
+  const day = m[1].padStart(2, '0');
+  const month = THAI_MONTHS[m[2]];
+  if (!month) return null;
+  const yearAD = parseInt(m[3]) - 543; // Buddhist Era → AD
+  return `${yearAD}-${month}-${day}`;
+}
+
 function parseHoldings(text: string): Holding[] {
   const lines = text.split('\n');
 
@@ -143,9 +161,14 @@ async function main() {
       const holdings = parseHoldings(text);
       if (!holdings.length) { noData++; continue; }
 
+      const asOf = parseAsOfDate(text);
       await prisma.fund.update({
         where: { id: fund.id },
-        data: { topHoldings: holdings as unknown as Prisma.InputJsonValue },
+        data: {
+          topHoldings: holdings as unknown as Prisma.InputJsonValue,
+          topHoldingsAsOf: asOf,
+          topHoldingsUpdatedAt: new Date(),
+        },
       });
       ok++;
     } catch {

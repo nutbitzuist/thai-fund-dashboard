@@ -681,11 +681,19 @@ export default async function FundDetailPage({ params }: Props) {
       {Array.isArray(fund.topHoldings) && (fund.topHoldings as {name:string;pct:number}[]).length > 0 && (() => {
         const holdings = fund.topHoldings as {name:string;pct:number}[]
         const maxPct = Math.max(...holdings.map(h => h.pct))
+        const asOf = (fund as { topHoldingsAsOf?: string | null }).topHoldingsAsOf
         return (
           <section>
             <Card>
-              <CardHeader>
-                <CardTitle>ถือครองหลัก (Top Holdings)</CardTitle>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle>ถือครองหลัก (Top Holdings)</CardTitle>
+                  {asOf && (
+                    <span className="text-xs text-slate-400 bg-slate-50 rounded px-2 py-1 shrink-0 mt-0.5">
+                      ข้อมูล ณ {new Date(asOf + 'T00:00:00').toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    </span>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -707,7 +715,7 @@ export default async function FundDetailPage({ params }: Props) {
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-slate-400 mt-3">ข้อมูลจาก Fund Factsheet ล่าสุด</p>
+                <p className="text-xs text-slate-400 mt-3">ที่มา: Fund Factsheet จาก ก.ล.ต. · อัปเดตอัตโนมัติทุกวันที่ 26 ของเดือน</p>
               </CardContent>
             </Card>
           </section>

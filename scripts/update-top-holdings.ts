@@ -224,7 +224,7 @@ async function main() {
       const holdings = parseHoldings(layoutText, noLayoutText);
       if (!holdings.length) { noData++; continue; }
 
-      const asOf = parseAsOfDate(text);
+      const asOf = parseAsOfDate(layoutText || noLayoutText);
       await prisma.fund.update({
         where: { id: fund.id },
         data: {

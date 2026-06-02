@@ -103,7 +103,8 @@ async function getFundBySlug(slug: string) {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params
+  const { slug: rawSlug } = await params
+  const slug = decodeURIComponent(rawSlug)
   const fund = await prisma.fund.findFirst({
     where: {
       OR: [
@@ -153,7 +154,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function FundDetailPage({ params }: Props) {
-  const { slug } = await params
+  const { slug: rawSlug } = await params
+  const slug = decodeURIComponent(rawSlug)
   const fund = await getFundBySlug(slug)
 
   if (!fund) notFound()

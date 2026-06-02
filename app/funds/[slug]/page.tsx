@@ -216,6 +216,12 @@ export default async function FundDetailPage({ params }: Props) {
   const maxNavCount = Math.max(0, ...Object.values(metricsByPeriod).map((m) => m.navCount ?? 0))
   const hasLimitedHistory = maxNavCount < PERIOD_MIN_NAV_COUNT['1Y']
 
+  // Is this fund genuinely new (registered < 1 year ago)?
+  // New funds don't have 1Y of data by definition — different message than "backfill in progress".
+  const oneYearAgo = new Date()
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+  const isNewFund = !fund.regisDate || new Date(fund.regisDate) > oneYearAgo
+
   const m1Y = metricsByPeriod['1Y']
   const my1YReturn = m1Y?.returnPct != null ? Number(m1Y.returnPct) : null
   const compareUrl = `/compare?funds=${fund.projId}`
@@ -308,12 +314,21 @@ export default async function FundDetailPage({ params }: Props) {
       )}
 
       {/* Limited History Warning */}
-      {hasLimitedHistory && (
+      {hasLimitedHistory && isNewFund && (
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            <strong>กองทุนใหม่</strong> — มีประวัติ NAV <strong>~{maxNavCount} วันทำการ</strong> ({Math.round(maxNavCount / 22)} เดือน)
+            ซึ่งเป็นเรื่องปกติสำหรับกองทุนที่จัดตั้งไม่นาน ผลตอบแทนระยะยาว (6M, 1Y) จะแสดงได้ครบเมื่อมีข้อมูลเพียงพอ
+          </span>
+        </div>
+      )}
+      {hasLimitedHistory && !isNewFund && (
         <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>
-            ระบบมีประวัติ NAV <strong>~{maxNavCount} วันทำการ</strong> ({Math.round(maxNavCount / 22)} เดือน) —
-            ผลตอบแทนระยะยาว (6M, 1Y, 3Y) คำนวณจากข้อมูลเท่าที่มี ซึ่งอาจไม่ครบช่วงเวลา
+            ระบบอยู่ระหว่างดึงข้อมูล NAV ย้อนหลัง — ปัจจุบันมีข้อมูล <strong>~{maxNavCount} วันทำการ</strong> ({Math.round(maxNavCount / 22)} เดือน)
+            ผลตอบแทนระยะยาว (6M, 1Y, 3Y) คำนวณจากข้อมูลเท่าที่มี และจะสมบูรณ์ขึ้นอัตโนมัติ
           </span>
         </div>
       )}
@@ -448,8 +463,8 @@ export default async function FundDetailPage({ params }: Props) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-slate-900">ผลตอบแทนย้อนหลัง</h2>
           {hasLimitedHistory && (
-            <span className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1">
-              ข้อมูลจำกัด ~{Math.round(maxNavCount / 22)} เดือน
+            <span className={`text-xs rounded px-2 py-1 ${isNewFund ? 'text-emerald-700 bg-emerald-50' : 'text-blue-600 bg-blue-50'}`}>
+              {isNewFund ? `กองทุนใหม่ ~${Math.round(maxNavCount / 22)} เดือน` : `กำลังดึงข้อมูลย้อนหลัง ~${Math.round(maxNavCount / 22)} เดือน`}
             </span>
           )}
         </div>
@@ -486,7 +501,9 @@ export default async function FundDetailPage({ params }: Props) {
         </div>
         {hasLimitedHistory && (
           <p className="text-xs text-slate-400 mt-2">
-            * ผลตอบแทนที่แสดงคำนวณจากระยะเวลาที่มีข้อมูล ไม่ใช่ช่วงเวลาตามชื่อ
+            {isNewFund
+              ? '* กองทุนใหม่: ผลตอบแทนคำนวณจากช่วงที่กองทุนมีอยู่ ไม่ใช่ช่วงเวลาตามชื่อ'
+              : '* ระบบกำลังดึงข้อมูลย้อนหลัง: ผลตอบแทนคำนวณจากข้อมูลที่มี จะสมบูรณ์ขึ้นโดยอัตโนมัติ'}
           </p>
         )}
       </section>
@@ -607,7 +624,9 @@ export default async function FundDetailPage({ params }: Props) {
             </div>
             <p className="text-xs text-slate-400 mt-3">
               {hasLimitedHistory && (
-                <span className="text-amber-600 mr-2">* ข้อมูลไม่ครบตามช่วงเวลา</span>
+                <span className="text-amber-600 mr-2">
+                  {isNewFund ? '* กองทุนใหม่: ข้อมูลยังไม่ครบตามช่วงเวลา' : '* กำลังดึงข้อมูลย้อนหลัง: ข้อมูลยังไม่ครบตามช่วงเวลา'}
+                </span>
               )}
               คำนวณจาก NAV ของกลุ่ม {defaultClass?.classAbbrName ?? 'default'} ·
               อัตราดอกเบี้ยไร้ความเสี่ยงที่ใช้คำนวณ Sharpe = 1.5% ต่อปี ·

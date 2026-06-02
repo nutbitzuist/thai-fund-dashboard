@@ -99,6 +99,7 @@ type MetricRow = {
   annualizedVolatilityPct: unknown;
   maxDrawdownPct: unknown;
   sharpeRatio: unknown;
+  navCount: unknown;
 };
 
 function buildFundDto(
@@ -112,6 +113,11 @@ function buildFundDto(
     latestNav && prevNav
       ? ((Number(latestNav.lastVal) - Number(prevNav.lastVal)) / Number(prevNav.lastVal)) * 100
       : null;
+
+  // Only expose metrics that have sufficient NAV history — never show returns
+  // calculated from too few data points.
+  const ok1Y = (m1Y?.navCount != null) && (Number(m1Y.navCount) >= PERIOD_MIN_NAV_COUNT['1Y']);
+  const ok3Y = (m3Y?.navCount != null) && (Number(m3Y.navCount) >= PERIOD_MIN_NAV_COUNT['3Y']);
 
   return {
     id: f.id,
@@ -127,11 +133,11 @@ function buildFundDto(
     latestNav: latestNav ? Number(latestNav.lastVal) : null,
     latestNavDate: latestNav ? (latestNav.navDate as Date).toISOString().split('T')[0] : null,
     dailyChangePct,
-    return1Y: m1Y?.returnPct != null ? Number(m1Y.returnPct) : null,
-    return3Y: m3Y?.returnPct != null ? Number(m3Y.returnPct) : null,
-    volatility1Y: m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
-    maxDrawdown1Y: m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
-    sharpe1Y: m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
+    return1Y: ok1Y && m1Y?.returnPct != null ? Number(m1Y.returnPct) : null,
+    return3Y: ok3Y && m3Y?.returnPct != null ? Number(m3Y.returnPct) : null,
+    volatility1Y: ok1Y && m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
+    maxDrawdown1Y: ok1Y && m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
+    sharpe1Y: ok1Y && m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
   };
 }
 
@@ -219,6 +225,7 @@ export async function GET(req: NextRequest) {
             annualizedVolatilityPct: true,
             maxDrawdownPct: true,
             sharpeRatio: true,
+            navCount: true,
           },
         }),
       ]);
@@ -267,6 +274,7 @@ export async function GET(req: NextRequest) {
               annualizedVolatilityPct: true,
               maxDrawdownPct: true,
               sharpeRatio: true,
+              navCount: true,
             },
           },
         },

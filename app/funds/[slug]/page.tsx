@@ -358,7 +358,10 @@ export default async function FundDetailPage({ params }: Props) {
                   <span><span className="text-slate-400">บลจ.:</span> {fund.amc.nameTh}</span>
                 )}
                 {fund.fundType && (
-                  <span><span className="text-slate-400">ประเภท:</span> {FUND_TYPE_LABELS[fund.fundType] ?? fund.fundType}</span>
+                  <span title="อนุมานจากชื่อกองทุน ไม่ใช่ข้อมูลจาก ก.ล.ต. โดยตรง">
+                    <span className="text-slate-400">ประเภท:</span> {FUND_TYPE_LABELS[fund.fundType] ?? fund.fundType}
+                    <span className="ml-1 text-xs text-slate-400">(อนุมาน)</span>
+                  </span>
                 )}
                 {fund.dividendPolicy && (
                   <span><span className="text-slate-400">นโยบายปันผล:</span> {DIVIDEND_POLICY_LABELS[fund.dividendPolicy] ?? fund.dividendPolicy}</span>
@@ -489,7 +492,7 @@ export default async function FundDetailPage({ params }: Props) {
               </div>
             )
           })}
-          {fund.secReturnYtd != null && (
+          {fund.secReturnYtd != null && Number(fund.secReturnYtd) !== 0 && (
             <MetricCard
               label="YTD"
               value={Number(fund.secReturnYtd)}

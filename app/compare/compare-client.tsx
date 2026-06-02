@@ -23,7 +23,7 @@ import {
 import { NormalizedChart } from '@/components/charts/normalized-chart'
 import { RiskBadge } from '@/components/metrics/risk-badge'
 import { COMPARE_COLORS, FUND_TYPE_LABELS, DIVIDEND_POLICY_LABELS } from '@/types'
-import { cn, formatPct, formatAUM, formatDateTh, getReturnColorClass, fundUrl } from '@/lib/utils'
+import { cn, formatPct, formatAUM, formatDateTh, getReturnColorClass, fundUrl, PERIOD_MIN_NAV_COUNT, hasSufficientData } from '@/lib/utils'
 import Link from 'next/link'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -295,9 +295,15 @@ export function CompareClient() {
     setSelectedFunds((prev) => [...prev, fund.projId])
   }
   const removeFund = (projId: string) => setSelectedFunds((prev) => prev.filter((id) => id !== projId))
-  const copyShareLink = () => {
-    navigator.clipboard.writeText(window.location.href)
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
+  const copyShareLink = async () => {
+    const url = window.location.href
+    const names = fundData.map((f) => f.projAbbrName ?? f.projId).join(' vs ')
+    if (navigator.share) {
+      await navigator.share({ title: `เปรียบเทียบกองทุน: ${names}`, url }).catch(() => {})
+    } else {
+      await navigator.clipboard.writeText(url)
+      setCopied(true); setTimeout(() => setCopied(false), 2000)
+    }
   }
 
   const chartSeries = fundData
@@ -424,16 +430,22 @@ export function CompareClient() {
                         <td className="py-3 pr-4"><FundLabel fund={fund} index={i} /></td>
                         {Object.keys(METRIC_LABELS).map((p) => {
                           const m = fund.metrics[p]
-                          // Highlight the best return in each column
-                          const allVals = fundData.map((f) => f.metrics[p]?.returnPct ?? null).filter((v) => v != null) as number[]
-                          const isBest = allVals.length > 1 && m?.returnPct != null && m.returnPct === Math.max(...allVals)
+                          const sufficient = hasSufficientData(p, m?.navCount)
+                          const displayVal = sufficient && m?.returnPct != null ? m.returnPct : null
+                          // Highlight the best return only among funds with sufficient data
+                          const allVals = fundData.map((f) => {
+                            const fm = f.metrics[p]
+                            return hasSufficientData(p, fm?.navCount) && fm?.returnPct != null ? fm.returnPct : null
+                          }).filter((v) => v != null) as number[]
+                          const isBest = allVals.length > 1 && displayVal != null && displayVal === Math.max(...allVals)
                           return (
                             <td key={p} className={cn(
                               'py-3 px-3 text-right font-medium tabular-nums',
-                              getReturnColorClass(m?.returnPct),
-                              isBest && 'ring-1 ring-inset ring-emerald-200 bg-emerald-50 rounded'
+                              getReturnColorClass(displayVal),
+                              isBest && 'ring-1 ring-inset ring-emerald-200 bg-emerald-50 rounded',
+                              !sufficient && m && 'opacity-50'
                             )}>
-                              {m?.returnPct != null ? formatPct(m.returnPct) : '-'}
+                              {displayVal != null ? formatPct(displayVal) : '-'}
                             </td>
                           )
                         })}

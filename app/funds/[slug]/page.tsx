@@ -698,8 +698,11 @@ export default async function FundDetailPage({ params }: Props) {
 
       {/* Top Holdings */}
       {Array.isArray(fund.topHoldings) && (fund.topHoldings as {name:string;pct:number}[]).length > 0 && (() => {
-        const holdings = fund.topHoldings as {name:string;pct:number}[]
-        const maxPct = Math.max(...holdings.map(h => h.pct))
+        const holdings = (fund.topHoldings as {name:string;pct:number}[])
+          .filter(h => h.name && h.name.trim() !== '' && !/^\d+\.?\d*$/.test(h.name.trim()) && h.pct > 0)
+          .sort((a, b) => b.pct - a.pct)
+        if (!holdings.length) return null
+        const maxPct = holdings[0].pct
         const asOf = (fund as { topHoldingsAsOf?: string | null }).topHoldingsAsOf
         return (
           <section>

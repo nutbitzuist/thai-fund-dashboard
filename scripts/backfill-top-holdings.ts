@@ -111,20 +111,22 @@ function parseHoldings(text: string): Holding[] {
   const window = lines.slice(sectionIdx, sectionIdx + 20);
 
   for (const line of window) {
-    // A holding row: significant leading whitespace + name + spaces + number
-    // Match: optional spaces (≥30 chars) + name + whitespace + decimal number
     const match = line.match(/^\s{30,}(.+?)\s{2,}(\d{1,3}\.\d{1,2})\s*$/);
     if (!match) continue;
     const name = match[1].trim();
     const pct = parseFloat(match[2]);
-    // Skip header rows and unreasonable values
-    if (name.includes('% NAV') || name.includes('%NAV') || name.includes('ทรัพย์สิน') ||
-        name.includes('Holding') || pct <= 0 || pct > 100) continue;
+    if (
+      !name ||
+      /^\d+\.?\d*$/.test(name) ||           // name is just a number → bad parse
+      name.includes('% NAV') || name.includes('%NAV') ||
+      name.includes('ทรัพย์สิน') || name.includes('Holding') ||
+      pct <= 0 || pct > 100
+    ) continue;
     holdings.push({ name, pct });
-    if (holdings.length >= 5) break;
+    if (holdings.length >= 10) break;       // collect up to 10, trim after sorting
   }
 
-  return holdings;
+  return holdings.sort((a, b) => b.pct - a.pct).slice(0, 5);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

@@ -109,12 +109,17 @@ function parseHoldings(text: string): Array<{name: string; pct: number}> {
     if (!match) continue;
     const name = match[1].trim();
     const pct = parseFloat(match[2]);
-    if (name.includes('% NAV') || name.includes('%NAV') || name.includes('ทรัพย์สิน') ||
-        name.includes('Holding') || pct <= 0 || pct > 100) continue;
+    if (
+      !name ||
+      /^\d+\.?\d*$/.test(name) ||
+      name.includes('% NAV') || name.includes('%NAV') ||
+      name.includes('ทรัพย์สิน') || name.includes('Holding') ||
+      pct <= 0 || pct > 100
+    ) continue;
     holdings.push({ name, pct });
-    if (holdings.length >= 5) break;
+    if (holdings.length >= 10) break;
   }
-  return holdings;
+  return holdings.sort((a, b) => b.pct - a.pct).slice(0, 5);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

@@ -459,14 +459,14 @@ export default async function FundDetailPage({ params }: Props) {
             const sufficient = hasSufficientData(period, m?.navCount)
             const periodLabel = PERIOD_LABELS[period] ?? period
             return (
-              <div key={period} className={cn(!sufficient && m && 'opacity-60')}>
+              <div key={period} className={cn(!sufficient && m && 'opacity-50')}>
                 <MetricCard
                   label={periodLabel}
-                  value={m?.returnPct != null ? Number(m.returnPct) : null}
+                  value={sufficient && m?.returnPct != null ? Number(m.returnPct) : null}
                   type="percent"
                   description={
                     !sufficient && m
-                      ? `ข้อมูลไม่ครบช่วง ${periodLabel} (มีแค่ ${m.navCount ?? 0} วัน, ต้องการ ${PERIOD_MIN_NAV_COUNT[period] ?? '-'})`
+                      ? `ข้อมูลไม่ครบช่วง ${periodLabel} (มี ${m.navCount ?? 0} วัน, ต้องการ ${PERIOD_MIN_NAV_COUNT[period] ?? '-'})`
                       : METRIC_TOOLTIPS.return.description
                   }
                   size="sm"
@@ -578,23 +578,23 @@ export default async function FundDetailPage({ params }: Props) {
                             <span className="ml-1.5 text-xs text-amber-600 font-normal">*</span>
                           )}
                         </td>
-                        <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(m?.returnPct != null ? Number(m.returnPct) : null))}>
-                          {m?.returnPct != null ? formatPct(Number(m.returnPct)) : '-'}
+                        <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(sufficient && m?.returnPct != null ? Number(m.returnPct) : null))}>
+                          {sufficient && m?.returnPct != null ? formatPct(Number(m.returnPct)) : '-'}
                         </td>
-                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(m?.secBenchmarkReturnPct != null ? Number(m.secBenchmarkReturnPct) : null))}>
-                          {m?.secBenchmarkReturnPct != null ? formatPct(Number(m.secBenchmarkReturnPct)) : '-'}
+                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(sufficient && m?.secBenchmarkReturnPct != null ? Number(m.secBenchmarkReturnPct) : null))}>
+                          {sufficient && m?.secBenchmarkReturnPct != null ? formatPct(Number(m.secBenchmarkReturnPct)) : '-'}
                         </td>
-                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(m?.secPeerAvgReturnPct != null ? Number(m.secPeerAvgReturnPct) : null))}>
-                          {m?.secPeerAvgReturnPct != null ? formatPct(Number(m.secPeerAvgReturnPct)) : '-'}
-                        </td>
-                        <td className="py-3 text-right text-sm tabular-nums text-slate-600">
-                          {m?.annualizedVolatilityPct != null ? `${Number(m.annualizedVolatilityPct).toFixed(2)}%` : '-'}
-                        </td>
-                        <td className={cn('py-3 text-right text-sm tabular-nums', m?.maxDrawdownPct != null && Number(m.maxDrawdownPct) < -5 ? 'text-red-600' : 'text-slate-600')}>
-                          {m?.maxDrawdownPct != null ? `${Number(m.maxDrawdownPct).toFixed(2)}%` : '-'}
+                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(sufficient && m?.secPeerAvgReturnPct != null ? Number(m.secPeerAvgReturnPct) : null))}>
+                          {sufficient && m?.secPeerAvgReturnPct != null ? formatPct(Number(m.secPeerAvgReturnPct)) : '-'}
                         </td>
                         <td className="py-3 text-right text-sm tabular-nums text-slate-600">
-                          {m?.sharpeRatio != null ? Number(m.sharpeRatio).toFixed(2) : '-'}
+                          {sufficient && m?.annualizedVolatilityPct != null ? `${Number(m.annualizedVolatilityPct).toFixed(2)}%` : '-'}
+                        </td>
+                        <td className={cn('py-3 text-right text-sm tabular-nums', sufficient && m?.maxDrawdownPct != null && Number(m.maxDrawdownPct) < -5 ? 'text-red-600' : 'text-slate-600')}>
+                          {sufficient && m?.maxDrawdownPct != null ? `${Number(m.maxDrawdownPct).toFixed(2)}%` : '-'}
+                        </td>
+                        <td className="py-3 text-right text-sm tabular-nums text-slate-600">
+                          {sufficient && m?.sharpeRatio != null ? Number(m.sharpeRatio).toFixed(2) : '-'}
                         </td>
                         <td className="py-3 text-right text-xs tabular-nums text-slate-400 hidden sm:table-cell">
                           {m?.navCount != null ? `${m.navCount} วัน` : '-'}

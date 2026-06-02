@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import prisma from '@/lib/db';
 import { handleRouteError } from '@/lib/errors';
+import { PERIOD_MIN_NAV_COUNT } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,9 +22,12 @@ export async function GET(req: NextRequest) {
 
   try {
     // Look up the target fund and its metric for the requested period
+    const minNavCount = PERIOD_MIN_NAV_COUNT[period] ?? 0;
+
     const targetMetric = await prisma.fundMetric.findFirst({
       where: {
         period,
+        navCount: { gte: minNavCount },
         fundClass: { isDefault: true },
         fund: { projId },
       },
@@ -61,6 +65,7 @@ export async function GET(req: NextRequest) {
       where: {
         period,
         returnPct: targetReturn != null ? { not: null, gt: targetReturn } : { not: null },
+        navCount: { gte: minNavCount },
         fundClass: { isDefault: true },
         fund: {
           fundStatus: { in: ['RG', 'SE'] },

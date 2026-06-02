@@ -18,6 +18,7 @@ import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { publicCacheHeaders } from '@/lib/cache-headers';
+import { PERIOD_MIN_NAV_COUNT } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -171,6 +172,7 @@ export async function GET(req: NextRequest) {
       const metricWhere = {
         period,
         [field]: { not: null },
+        navCount: { gte: PERIOD_MIN_NAV_COUNT[period] ?? 0 },
         fundClass: { isDefault: true },
         fund: where,
       };

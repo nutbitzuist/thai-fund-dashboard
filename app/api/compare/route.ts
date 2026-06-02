@@ -112,21 +112,33 @@ export async function GET(req: NextRequest) {
         orderBy: { navDate: 'asc' },
         select: { fundClassId: true, navDate: true, lastVal: true, netAsset: true, buyPrice: true, sellPrice: true },
       }),
-      // Batch 2: AUM snapshots via raw SQL DISTINCT ON (fastest for "latest before date" per class)
+      // Batch 2: point-in-time NAV snapshots (latest, 3M ago, 1Y ago) per fund class.
+      // Each CTE uses DISTINCT ON to get the single closest row on or before the target date.
       classIds.length > 0 ? prisma.$queryRaw<Array<{
         fundClassId: number; navDate: Date; lastVal: unknown;
         netAsset: unknown; buyPrice: unknown; sellPrice: unknown; snap: string;
       }>>`
-        SELECT DISTINCT ON ("fundClassId", snap) "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", snap
-        FROM (
-          SELECT *, 'latest' AS snap FROM nav_price WHERE "fundClassId" = ANY(${classIds}) ORDER BY "navDate" DESC LIMIT ${classIds.length * 3}
-        ) q1
-        UNION ALL
-        SELECT DISTINCT ON ("fundClassId") "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", '3m' AS snap
-        FROM nav_price WHERE "fundClassId" = ANY(${classIds}) AND "navDate" <= ${date3MAgo} ORDER BY "fundClassId", "navDate" DESC
-        UNION ALL
-        SELECT DISTINCT ON ("fundClassId") "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", '1y' AS snap
-        FROM nav_price WHERE "fundClassId" = ANY(${classIds}) AND "navDate" <= ${date1YAgo} ORDER BY "fundClassId", "navDate" DESC
+        WITH latest AS (
+          SELECT DISTINCT ON ("fundClassId")
+            "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", 'latest' AS snap
+          FROM nav_price WHERE "fundClassId" = ANY(${classIds})
+          ORDER BY "fundClassId", "navDate" DESC
+        ),
+        snap3m AS (
+          SELECT DISTINCT ON ("fundClassId")
+            "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", '3m' AS snap
+          FROM nav_price WHERE "fundClassId" = ANY(${classIds}) AND "navDate" <= ${date3MAgo}
+          ORDER BY "fundClassId", "navDate" DESC
+        ),
+        snap1y AS (
+          SELECT DISTINCT ON ("fundClassId")
+            "fundClassId", "navDate", "lastVal", "netAsset", "buyPrice", "sellPrice", '1y' AS snap
+          FROM nav_price WHERE "fundClassId" = ANY(${classIds}) AND "navDate" <= ${date1YAgo}
+          ORDER BY "fundClassId", "navDate" DESC
+        )
+        SELECT * FROM latest
+        UNION ALL SELECT * FROM snap3m
+        UNION ALL SELECT * FROM snap1y
       ` : Promise.resolve([]),
     ]);
 
@@ -171,6 +183,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Build fund summaries with metrics + AUM + fee data
+    // Funds without a default class are included but will have null NAV data (handled gracefully)
     const fundSummaries = (funds as FundWithRelations[]).map((fund) => {
       const metricsByPeriod: Record<string, object> = {};
       const seen = new Set<string>();

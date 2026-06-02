@@ -7,6 +7,7 @@ import prisma from '@/lib/db';
 import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { publicCacheHeaders } from '@/lib/cache-headers';
+import { PERIOD_MIN_NAV_COUNT } from '@/lib/utils';
 
 // Inline type for FundMetric with includes (Prisma 7 compat)
 interface MetricWithRelations {
@@ -99,14 +100,18 @@ export async function GET(req: NextRequest) {
     else if (amcIdList.length > 1) fundWhere.amcId = { in: amcIdList };
 
     // Fetch latest metrics for the relevant period
-    // Join: FundMetric → FundClass (isDefault) → Fund (with filters)
+    // navCount filter ensures only funds with sufficient history appear in rankings
+    const minNavCount = PERIOD_MIN_NAV_COUNT[period] ?? 0;
+    const metricWhere = {
+      period,
+      [`${metricField}`]: { not: null },
+      navCount: { gte: minNavCount },
+      fundClass: { isDefault: true },
+      fund: fundWhere,
+    };
+
     const metrics = await prisma.fundMetric.findMany({
-      where: {
-        period,
-        [`${metricField}`]: { not: null },
-        fundClass: { isDefault: true },
-        fund: fundWhere,
-      },
+      where: metricWhere,
       orderBy: {
         [metricField]: sort,
       },
@@ -131,14 +136,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const total = await prisma.fundMetric.count({
-      where: {
-        period,
-        [`${metricField}`]: { not: null },
-        fundClass: { isDefault: true },
-        fund: fundWhere,
-      },
-    });
+    const total = await prisma.fundMetric.count({ where: metricWhere });
 
     const data = (metrics as MetricWithRelations[]).map((m, idx) => ({
       rank: skip + idx + 1,

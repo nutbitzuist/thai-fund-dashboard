@@ -3,6 +3,7 @@ import { Noto_Sans_Thai, Inter } from 'next/font/google'
 import './globals.css'
 import { Navbar } from '@/components/layout/navbar'
 import { Footer } from '@/components/layout/footer'
+import { appBaseUrl } from '@/lib/utils'
 import { LayoutClient } from '@/components/layout/layout-client'
 
 const notoSansThai = Noto_Sans_Thai({
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'th_TH',
     siteName: 'กองทุนไทย Research Dashboard',
-    url: process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com',
+    url: appBaseUrl(),
   },
 }
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import prisma from '@/lib/db'
 import { FUND_TYPE_LABELS } from '@/types'
-import { formatPct, getReturnColorClass, cn } from '@/lib/utils'
+import { formatPct, getReturnColorClass, cn, appBaseUrl } from '@/lib/utils'
 
 export const metadata: Metadata = {
   title: 'หมวดหมู่กองทุนรวม',
@@ -79,7 +79,7 @@ async function getCategoryStats(): Promise<CategoryStats[]> {
 
 export default async function CategoriesPage() {
   const categories = await getCategoryStats()
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com'
+  const base = appBaseUrl()
 
   const jsonLd = {
     '@context': 'https://schema.org',

@@ -31,8 +31,12 @@ function isNeonUrl(url: string): boolean {
   }
 }
 
+function cleanEnvValue(value: string | undefined): string | undefined {
+  return value?.trim().replace(/^['"]|['"]$/g, '').replace(/\\n/g, '').replace(/\\r/g, '');
+}
+
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = cleanEnvValue(process.env.DATABASE_URL);
   if (!connectionString) throw new Error('DATABASE_URL is not set');
 
   const log: ('error' | 'warn' | 'query')[] =

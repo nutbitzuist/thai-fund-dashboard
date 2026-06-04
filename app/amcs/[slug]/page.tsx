@@ -9,7 +9,7 @@ import { ArrowLeft, Building2 } from 'lucide-react'
 import prisma from '@/lib/db'
 import { Badge } from '@/components/ui/badge'
 import { FUND_TYPE_LABELS } from '@/types'
-import { formatPct, formatNav, getReturnColorClass, cn, fundUrl } from '@/lib/utils'
+import { formatPct, formatNav, getReturnColorClass, cn, fundUrl, appBaseUrl } from '@/lib/utils'
 
 export const revalidate = 3600
 
@@ -66,7 +66,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   })
   if (!amc) return { title: 'ไม่พบ บลจ.' }
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com'
+  const base = appBaseUrl()
   const canonicalSlug = amc.slug ?? slug
   const url = `${base}/amcs/${canonicalSlug}`
   const description = `กองทุนรวมทั้งหมดของ${amc.nameTh}${amc.nameEn ? ` (${amc.nameEn})` : ''} ดูผลตอบแทน NAV และข้อมูลกองทุนแต่ละกองจาก ก.ล.ต.`
@@ -99,7 +99,7 @@ export default async function AmcDetailPage({ params }: Props) {
     redirect(`/amcs/${amc.slug}`)
   }
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com'
+  const base = appBaseUrl()
   const canonicalSlug = amc.slug ?? slug
   const funds = amc.funds
   const returns = funds

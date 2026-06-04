@@ -1,8 +1,9 @@
 // app/robots.ts
-import type { MetadataRoute } from 'next';
+import type { MetadataRoute } from 'next'
+import { appBaseUrl } from '@/lib/utils'
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com';
+  const baseUrl = appBaseUrl()
   return {
     rules: [
       {

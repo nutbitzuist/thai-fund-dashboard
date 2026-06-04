@@ -223,6 +223,23 @@ export function fundUrl(fund: { projAbbrName: string | null; projId: string }): 
   return `/funds/${encodeURIComponent(fund.projAbbrName ?? fund.projId)}`;
 }
 
+export function appBaseUrl(): string {
+  const configured = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://funds.bulltiq.com')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/\\n/g, '')
+    .replace(/\\r/g, '')
+    .replace(/\/+$/, '');
+
+  // Keep SEO/canonical links on the public custom domain even if a deployment
+  // environment variable still points at the Vercel preview/legacy host.
+  if (/^https?:\/\/thai-fund-dashboard\.vercel\.app$/i.test(configured)) {
+    return 'https://funds.bulltiq.com';
+  }
+
+  return configured;
+}
+
 // ── Period Label ─────────────────────────────
 
 export const PERIOD_LABELS: Record<string, string> = {

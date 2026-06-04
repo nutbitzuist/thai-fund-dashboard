@@ -1,0 +1,50 @@
+name: DB Audit and Metric Repair
+
+# Manual production repair: audit raw NAV / metric coverage, recalculate all
+# derived fund_metric rows from raw nav_price data, prune stale rows, audit again.
+on:
+  workflow_dispatch:
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit before repair
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NODE_ENV: production
+        run: npx tsx scripts/audit-data-health.ts | tee audit-before.json
+
+      - name: Recalculate and repair production metrics
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NODE_ENV: production
+        run: npx tsx scripts/recalculate-metrics.ts | tee metric-repair.json
+
+      - name: Audit after repair
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NODE_ENV: production
+        run: npx tsx scripts/audit-data-health.ts --fail-on-stale | tee audit-after.json
+
+      - name: Upload audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-audit-metric-repair-${{ github.run_id }}
+          path: |
+            audit-before.json
+            metric-repair.json
+            audit-after.json

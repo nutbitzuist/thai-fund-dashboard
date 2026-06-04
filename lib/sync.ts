@@ -299,6 +299,63 @@ export async function syncAllNavs(
   return { inserted, updatedFundIds };
 }
 
+export async function backfillNavHistory(
+  targetDays = 730,
+  daysPerFund = 30,
+  maxFunds = 5
+): Promise<{ inserted: number; fundsProcessed: number; updatedFundIds: number[] }> {
+  const endDate = getLastWeekday();
+  const targetStart = new Date(endDate);
+  targetStart.setDate(targetStart.getDate() - targetDays);
+
+  const funds = await prisma.fund.findMany({
+    where: { fundStatus: { in: ['RG', 'SE'] }, fundClasses: { some: {} } },
+    select: {
+      id: true,
+      projId: true,
+      navPrices: {
+        orderBy: { navDate: 'asc' },
+        take: 1,
+        select: { navDate: true },
+      },
+    },
+  });
+
+  const candidates = funds
+    .map((fund) => ({
+      id: fund.id,
+      projId: fund.projId,
+      earliestNavDate: fund.navPrices[0]?.navDate ? new Date(fund.navPrices[0].navDate) : null,
+    }))
+    .filter((fund) => fund.earliestNavDate == null || fund.earliestNavDate > targetStart)
+    .sort((a, b) => {
+      const aTime = a.earliestNavDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      const bTime = b.earliestNavDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      return bTime - aTime;
+    })
+    .slice(0, maxFunds);
+
+  let inserted = 0;
+  const updatedFundIds: number[] = [];
+
+  for (const fund of candidates) {
+    const backfillEnd = fund.earliestNavDate
+      ? new Date(fund.earliestNavDate.getTime() - 86400000)
+      : endDate;
+    const backfillStart = new Date(backfillEnd);
+    backfillStart.setDate(backfillStart.getDate() - daysPerFund);
+    if (backfillStart < targetStart) backfillStart.setTime(targetStart.getTime());
+    if (backfillStart > backfillEnd) continue;
+
+    const count = await syncNavForFund(fund.id, fund.projId, backfillStart, backfillEnd);
+    inserted += count;
+    if (count > 0) updatedFundIds.push(fund.id);
+    await sleep(INTER_BATCH_DELAY);
+  }
+
+  return { inserted, fundsProcessed: candidates.length, updatedFundIds };
+}
+
 // ── Calculate Metrics ─────────────────────────
 
 export async function calculateMetricsForFund(fundId: number): Promise<number> {

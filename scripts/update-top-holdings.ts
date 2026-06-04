@@ -22,6 +22,7 @@ import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { config as dotenvConfig } from 'dotenv';
 import { Prisma } from '@prisma/client';
+import { normalizeTopHoldings } from '../lib/top-holdings';
 import { createClient } from '../lib/db';
 
 const envFile = resolve(process.cwd(), '.env.local');
@@ -175,7 +176,7 @@ function parseHoldings(layoutText: string, noLayoutText: string): Array<{name: s
   const h1 = parseWithLayout(layoutText);
   const h2 = parseNoLayout(noLayoutText);
   const h = h2.length > h1.length ? h2 : h1;
-  return h.sort((a, b) => b.pct - a.pct).slice(0, 5);
+  return normalizeTopHoldings(h, 5);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

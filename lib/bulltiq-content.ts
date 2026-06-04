@@ -12,11 +12,14 @@ export interface SeoLandingPage {
   metric: SeoMetric;
   sort: 'asc' | 'desc';
   fundType?: string;
+  amcQuery?: string;
   intro: string;
   insightPrompt: string;
+  qualityGate: { minRows: number };
+  indexable: boolean;
 }
 
-export const SEO_LANDING_PAGES: SeoLandingPage[] = [
+const BASE_SEO_PAGES: SeoLandingPage[] = [
   {
     slug: 'best-thai-equity-funds',
     title: 'กองทุนหุ้นไทยผลตอบแทนดี — Bulltiq',
@@ -28,6 +31,8 @@ export const SEO_LANDING_PAGES: SeoLandingPage[] = [
     fundType: 'EQ',
     intro: 'หน้านี้ช่วยดูว่ากองทุนหุ้นกลุ่มไทยตัวไหนทำผลงาน 1 ปีเด่น โดยต้องอ่านคู่กับความเสี่ยงและข้อมูลย้อนหลัง ไม่ใช่ดูผลตอบแทนอย่างเดียว',
     insightPrompt: 'ดูว่าผลตอบแทนสูงมาจากการขึ้นแรงระยะสั้นหรือมีความสม่ำเสมอพอสมควร',
+    qualityGate: { minRows: 8 },
+    indexable: true,
   },
   {
     slug: 'best-fixed-income-funds',
@@ -40,6 +45,8 @@ export const SEO_LANDING_PAGES: SeoLandingPage[] = [
     fundType: 'FI',
     intro: 'กองทุนตราสารหนี้ควรถูกอ่านทั้งผลตอบแทนและความเสี่ยงด้านราคา/ดอกเบี้ย หน้านี้จึงแสดงคะแนนสุขภาพประกอบ ไม่ใช่จัดอันดับจากผลตอบแทนอย่างเดียว',
     insightPrompt: 'เช็กว่ากองทุนที่ผลตอบแทนสูงมีความผันผวนหรือ Drawdown สูงผิดปกติหรือไม่',
+    qualityGate: { minRows: 8 },
+    indexable: true,
   },
   {
     slug: 'low-volatility-funds',
@@ -51,6 +58,8 @@ export const SEO_LANDING_PAGES: SeoLandingPage[] = [
     sort: 'asc',
     intro: 'ความผันผวนต่ำไม่ได้แปลว่าปลอดภัยเสมอ แต่ช่วยกรองกองทุนที่ NAV แกว่งน้อยกว่าในช่วงที่ผ่านมาได้',
     insightPrompt: 'ดูคู่กับผลตอบแทนและ Drawdown เพื่อไม่เลือกกองทุนที่นิ่งแต่ไม่สร้างผลตอบแทน',
+    qualityGate: { minRows: 8 },
+    indexable: true,
   },
   {
     slug: 'high-sharpe-funds',
@@ -62,6 +71,8 @@ export const SEO_LANDING_PAGES: SeoLandingPage[] = [
     sort: 'desc',
     intro: 'Sharpe Ratio ช่วยดูว่ากองทุนให้ผลตอบแทนคุ้มกับความผันผวนแค่ไหน แต่ควรเปรียบเทียบกองทุนประเภทเดียวกัน',
     insightPrompt: 'ดูว่าคะแนนสูงเพราะผลตอบแทนดีจริงหรือเพราะความผันผวนต่ำมากในช่วงสั้น',
+    qualityGate: { minRows: 8 },
+    indexable: true,
   },
   {
     slug: 'best-ssf-rmf-funds',
@@ -74,7 +85,79 @@ export const SEO_LANDING_PAGES: SeoLandingPage[] = [
     fundType: 'SSF',
     intro: 'SSF/RMF มีเงื่อนไขภาษีและระยะเวลาถือครอง ควรใช้หน้านี้เป็นจุดเริ่มต้นในการคัดกรอง ไม่ใช่ตัดสินใจซื้อทันที',
     insightPrompt: 'ดูความเสี่ยงและระยะเวลาถือครองให้สอดคล้องกับแผนภาษีของตัวเอง',
+    qualityGate: { minRows: 8 },
+    indexable: true,
   },
+];
+
+const FUND_TYPE_SEO = [
+  { code: 'EQ', slug: 'equity', label: 'หุ้น', audience: 'นักลงทุนที่รับความผันผวนได้และต้องการโอกาสเติบโต' },
+  { code: 'FI', slug: 'fixed-income', label: 'ตราสารหนี้', audience: 'นักลงทุนที่ต้องการลดความผันผวนของพอร์ต' },
+  { code: 'MM', slug: 'money-market', label: 'ตลาดเงิน', audience: 'คนที่ต้องการพักเงินและรับความเสี่ยงต่ำ' },
+  { code: 'BA', slug: 'mixed', label: 'ผสม', audience: 'นักลงทุนที่ต้องการกระจายสินทรัพย์ในกองทุนเดียว' },
+  { code: 'FIF', slug: 'foreign', label: 'ต่างประเทศ', audience: 'นักลงทุนที่ต้องการกระจายออกนอกไทย' },
+  { code: 'RE', slug: 'property', label: 'อสังหาริมทรัพย์', audience: 'นักลงทุนที่สนใจรายได้/สินทรัพย์จริง' },
+  { code: 'CM', slug: 'commodity', label: 'สินค้าโภคภัณฑ์', audience: 'นักลงทุนที่ใช้สินค้าโภคภัณฑ์กระจายความเสี่ยง' },
+  { code: 'RMF', slug: 'rmf', label: 'RMF', audience: 'คนวางแผนเกษียณและลดหย่อนภาษี' },
+  { code: 'SSF', slug: 'ssf', label: 'SSF', audience: 'คนวางแผนภาษีที่ถือยาวได้' },
+];
+
+const METRIC_SEO = [
+  { metric: 'return1Y' as const, sort: 'desc' as const, slug: 'best-return', label: 'ผลตอบแทน 1 ปีดี', prompt: 'อย่าดูผลตอบแทนอย่างเดียว ให้ดู Drawdown และ Health Score คู่กัน' },
+  { metric: 'volatility1Y' as const, sort: 'asc' as const, slug: 'low-volatility', label: 'ความผันผวนต่ำ', prompt: 'เหมาะสำหรับเริ่มหากองทุนที่ NAV แกว่งน้อยกว่า แต่ต้องดูผลตอบแทนประกอบ' },
+  { metric: 'sharpe1Y' as const, sort: 'desc' as const, slug: 'high-sharpe', label: 'Sharpe Ratio สูง', prompt: 'ใช้ดูคุณภาพผลตอบแทนต่อความเสี่ยงเมื่อเทียบในกลุ่มเดียวกัน' },
+  { metric: 'maxDrawdown1Y' as const, sort: 'desc' as const, slug: 'low-drawdown', label: 'Drawdown ต่ำ', prompt: 'ช่วยกรองกองทุนที่ลงลึกน้อยกว่าในรอบปีที่ผ่านมา' },
+];
+
+const AMC_SEO = [
+  { slug: 'scbam', name: 'SCBAM' },
+  { slug: 'kasset', name: 'KAsset' },
+  { slug: 'bblam', name: 'BBLAM' },
+  { slug: 'ktam', name: 'KTAM' },
+  { slug: 'krungsri', name: 'Krungsri Asset' },
+  { slug: 'mfc', name: 'MFC' },
+  { slug: 'oneam', name: 'ONEAM' },
+  { slug: 'tisco', name: 'TISCOAM' },
+  { slug: 'uobam', name: 'UOBAM' },
+  { slug: 'abrdn', name: 'abrdn' },
+];
+
+const GENERATED_TYPE_PAGES: SeoLandingPage[] = FUND_TYPE_SEO.flatMap((type) =>
+  METRIC_SEO.map((metric) => ({
+    slug: `${metric.slug}-${type.slug}-funds`,
+    title: `กองทุน${type.label}${metric.label} — Bulltiq`,
+    h1: `กองทุน${type.label}${metric.label}`,
+    description: `จัดอันดับกองทุน${type.label}จาก${metric.label} พร้อม Health Score ความเสี่ยง และข้อมูลย้อนหลัง`,
+    audience: type.audience,
+    metric: metric.metric,
+    sort: metric.sort,
+    fundType: type.code,
+    intro: `หน้านี้คัดกองทุน${type.label}ด้วยข้อมูลจริงจากฐานข้อมูล Bulltiq เพื่อช่วยทำ shortlist ก่อนอ่าน Fund Fact Sheet รายกองทุน`,
+    insightPrompt: metric.prompt,
+    qualityGate: { minRows: 6 },
+    indexable: true,
+  })),
+);
+
+const GENERATED_AMC_PAGES: SeoLandingPage[] = AMC_SEO.map((amc) => ({
+  slug: `best-${amc.slug}-funds`,
+  title: `กองทุน ${amc.name} น่าสนใจ — Bulltiq`,
+  h1: `กองทุน ${amc.name} น่าสนใจ`,
+  description: `Shortlist กองทุนของ ${amc.name} ด้วยผลตอบแทน 1 ปี ความเสี่ยง และ Bulltiq Fund Health Score`,
+  audience: `นักลงทุนที่กำลังดูหรือถือกองทุนของ ${amc.name}`,
+  metric: 'return1Y',
+  sort: 'desc',
+  amcQuery: amc.name,
+  intro: `หน้านี้รวมกองทุนของ ${amc.name} ที่มีข้อมูลย้อนหลังเพียงพอ เพื่อใช้เป็นจุดเริ่มต้นก่อนเปรียบเทียบกองทุนรายตัว`,
+  insightPrompt: 'ดูว่ากองทุนเด่นเพราะผลตอบแทนระยะสั้น หรือมีคะแนนสุขภาพและความเสี่ยงที่สมเหตุสมผล',
+  qualityGate: { minRows: 5 },
+  indexable: true,
+}));
+
+export const SEO_LANDING_PAGES: SeoLandingPage[] = [
+  ...BASE_SEO_PAGES,
+  ...GENERATED_TYPE_PAGES,
+  ...GENERATED_AMC_PAGES,
 ];
 
 export function getSeoLandingPage(slug: string): SeoLandingPage | undefined {

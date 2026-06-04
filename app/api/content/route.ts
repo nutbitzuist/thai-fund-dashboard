@@ -34,6 +34,15 @@ export async function GET(req: NextRequest) {
       fund: {
         fundStatus: { in: ['RG', 'SE'] },
         ...(page.fundType ? { fundType: page.fundType } : {}),
+        ...(page.amcQuery ? {
+          amc: {
+            OR: [
+              { nameTh: { contains: page.amcQuery, mode: 'insensitive' as const } },
+              { nameEn: { contains: page.amcQuery, mode: 'insensitive' as const } },
+              { slug: { contains: page.amcQuery.toLowerCase(), mode: 'insensitive' as const } },
+            ],
+          },
+        } : {}),
       },
     },
     orderBy: { [field]: page.sort },
@@ -51,6 +60,10 @@ export async function GET(req: NextRequest) {
       },
     },
   });
+
+  if (rows.length < page.qualityGate.minRows) {
+    return NextResponse.json({ error: 'Not enough data for this SEO page', minRows: page.qualityGate.minRows, rows: rows.length }, { status: 404 });
+  }
 
   const contentRows = rows.map((row, idx) => {
     const health = calculateFundHealthScore({

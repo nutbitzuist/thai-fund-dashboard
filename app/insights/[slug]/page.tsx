@@ -55,6 +55,15 @@ export default async function InsightLandingPage({ params }: Props) {
       fund: {
         fundStatus: { in: ['RG', 'SE'] },
         ...(page.fundType ? { fundType: page.fundType } : {}),
+        ...(page.amcQuery ? {
+          amc: {
+            OR: [
+              { nameTh: { contains: page.amcQuery, mode: 'insensitive' as const } },
+              { nameEn: { contains: page.amcQuery, mode: 'insensitive' as const } },
+              { slug: { contains: page.amcQuery.toLowerCase(), mode: 'insensitive' as const } },
+            ],
+          },
+        } : {}),
       },
     },
     orderBy: { [field]: page.sort },
@@ -74,6 +83,10 @@ export default async function InsightLandingPage({ params }: Props) {
       },
     },
   });
+
+  if (rows.length < page.qualityGate.minRows) {
+    notFound();
+  }
 
   const ranked = rows.map((row, idx) => {
     const returnPct = row.returnPct != null ? Number(row.returnPct) : null;

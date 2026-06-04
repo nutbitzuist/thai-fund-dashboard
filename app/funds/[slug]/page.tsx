@@ -47,6 +47,8 @@ import {
   appBaseUrl,
 } from '@/lib/utils'
 import { calculateFundHealthScore, explainFundHealthScore } from '@/lib/fund-health-score'
+import { normalizeTopHoldings } from '@/lib/top-holdings'
+import { shouldShowMetricColumn } from '@/lib/performance-display'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -220,6 +222,10 @@ export default async function FundDetailPage({ params }: Props) {
 
   const maxNavCount = Math.max(0, ...Object.values(metricsByPeriod).map((m) => m.navCount ?? 0))
   const hasLimitedHistory = maxNavCount < PERIOD_MIN_NAV_COUNT['1Y']
+  const displayMetricRows = DISPLAY_METRIC_PERIODS.map((period) => metricsByPeriod[period]).filter((m): m is NonNullable<typeof m> => Boolean(m))
+  const showBenchmarkColumn = shouldShowMetricColumn(displayMetricRows, 'secBenchmarkReturnPct')
+  const showPeerColumn = shouldShowMetricColumn(displayMetricRows, 'secPeerAvgReturnPct')
+  const topHoldings = normalizeTopHoldings(fund.topHoldings, 5)
 
   // Is this fund genuinely new (registered < 1 year ago)?
   // New funds don't have 1Y of data by definition — different message than "backfill in progress".
@@ -621,8 +627,8 @@ export default async function FundDetailPage({ params }: Props) {
                   <tr className="border-b border-slate-200">
                     <th className="text-left py-2 pr-4 text-slate-500 font-medium">ช่วงเวลา</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">ผลตอบแทน</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-medium hidden md:table-cell">Benchmark</th>
-                    <th className="text-right py-2 px-3 text-slate-500 font-medium hidden md:table-cell">Peer Avg</th>
+                    {showBenchmarkColumn && <th className="text-right py-2 px-3 text-slate-500 font-medium hidden md:table-cell">Benchmark</th>}
+                    {showPeerColumn && <th className="text-right py-2 px-3 text-slate-500 font-medium hidden md:table-cell">Peer Avg</th>}
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Volatility</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Max Drawdown</th>
                     <th className="text-right py-2 px-3 text-slate-500 font-medium">Sharpe</th>
@@ -635,8 +641,8 @@ export default async function FundDetailPage({ params }: Props) {
                     <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(dailyChangePct))}>
                       {formatPct(dailyChangePct)}
                     </td>
-                    <td className="py-3 text-right text-sm tabular-nums hidden md:table-cell text-slate-400">-</td>
-                    <td className="py-3 text-right text-sm tabular-nums hidden md:table-cell text-slate-400">-</td>
+                    {showBenchmarkColumn && <td className="py-3 text-right text-sm tabular-nums hidden md:table-cell text-slate-400">-</td>}
+                    {showPeerColumn && <td className="py-3 text-right text-sm tabular-nums hidden md:table-cell text-slate-400">-</td>}
                     <td className="py-3 text-right text-sm tabular-nums text-slate-400">-</td>
                     <td className="py-3 text-right text-sm tabular-nums text-slate-400">-</td>
                     <td className="py-3 text-right text-sm tabular-nums text-slate-400">-</td>
@@ -665,12 +671,16 @@ export default async function FundDetailPage({ params }: Props) {
                         <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(sufficient && m?.returnPct != null ? Number(m.returnPct) : null))}>
                           {sufficient && m?.returnPct != null ? formatPct(Number(m.returnPct)) : '-'}
                         </td>
-                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(sufficient && m?.secBenchmarkReturnPct != null ? Number(m.secBenchmarkReturnPct) : null))}>
-                          {sufficient && m?.secBenchmarkReturnPct != null ? formatPct(Number(m.secBenchmarkReturnPct)) : '-'}
-                        </td>
-                        <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(sufficient && m?.secPeerAvgReturnPct != null ? Number(m.secPeerAvgReturnPct) : null))}>
-                          {sufficient && m?.secPeerAvgReturnPct != null ? formatPct(Number(m.secPeerAvgReturnPct)) : '-'}
-                        </td>
+                        {showBenchmarkColumn && (
+                          <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(sufficient && m?.secBenchmarkReturnPct != null ? Number(m.secBenchmarkReturnPct) : null))}>
+                            {sufficient && m?.secBenchmarkReturnPct != null ? formatPct(Number(m.secBenchmarkReturnPct)) : '-'}
+                          </td>
+                        )}
+                        {showPeerColumn && (
+                          <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(sufficient && m?.secPeerAvgReturnPct != null ? Number(m.secPeerAvgReturnPct) : null))}>
+                            {sufficient && m?.secPeerAvgReturnPct != null ? formatPct(Number(m.secPeerAvgReturnPct)) : '-'}
+                          </td>
+                        )}
                         <td className="py-3 text-right text-sm tabular-nums text-slate-600">
                           {sufficient && m?.annualizedVolatilityPct != null ? `${Number(m.annualizedVolatilityPct).toFixed(2)}%` : '-'}
                         </td>
@@ -764,19 +774,8 @@ export default async function FundDetailPage({ params }: Props) {
       )}
 
       {/* Top Holdings */}
-      {Array.isArray(fund.topHoldings) && (fund.topHoldings as {name:string;pct:number|string}[]).length > 0 && (() => {
-        const holdings = (fund.topHoldings as {name:string;pct:number|string}[])
-          .map((h) => ({ name: h.name?.trim() ?? '', pct: Number(h.pct) }))
-          .filter(h =>
-            h.name !== '' &&
-            !/^[-+]?\d+(?:\.\d+)?%?$/.test(h.name) &&
-            !/^(หน่วยลงทุนในประเทศ|เงินฝาก|ตราสาร|พันธบัตร)$/.test(h.name) &&
-            Number.isFinite(h.pct) && h.pct > 0
-          )
-          .sort((a, b) => b.pct - a.pct)
-          .slice(0, 5)
-        if (!holdings.length) return null
-        const maxPct = holdings[0].pct
+      {topHoldings.length > 0 && (() => {
+        const maxPct = topHoldings[0].pct
         const asOf = (fund as { topHoldingsAsOf?: string | null }).topHoldingsAsOf
         return (
           <section>
@@ -793,25 +792,25 @@ export default async function FundDetailPage({ params }: Props) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {holdings.map((h, i) => (
-                    <div key={i} className="flex items-center gap-3">
+                  {topHoldings.map((h, i) => (
+                    <div key={`${h.name}-${i}`} className="flex items-center gap-3">
                       <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2 mb-1">
-                          <span className="text-sm text-slate-800 truncate">{h.name}</span>
+                          <span className="text-sm text-slate-800 truncate" title={h.name}>{h.name}</span>
                           <span className="text-sm font-semibold text-slate-900 shrink-0">{h.pct.toFixed(2)}%</span>
                         </div>
                         <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                           <div
                             className="h-full rounded-full bg-blue-500"
-                            style={{ width: `${(h.pct / maxPct) * 100}%` }}
+                            style={{ width: `${Math.min(100, (h.pct / maxPct) * 100)}%` }}
                           />
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-slate-400 mt-3">ที่มา: Fund Factsheet จาก ก.ล.ต. · อัปเดตอัตโนมัติทุกวันที่ 26 ของเดือน</p>
+                <p className="text-xs text-slate-400 mt-3">ที่มา: Fund Factsheet จาก ก.ล.ต. · แสดงสูงสุด 5 รายการหลังจัดรูปแบบชื่อหลักทรัพย์ให้อ่านง่าย</p>
               </CardContent>
             </Card>
           </section>

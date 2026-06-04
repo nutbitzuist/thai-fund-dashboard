@@ -75,15 +75,15 @@ interface FundData {
 
 interface NavPoint { date: string; normalized: number }
 
-type Period = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'
-const PERIODS: Period[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']
+type Period = '1D' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '3Y' | 'MAX'
+const PERIODS: Period[] = ['1D', '1M', '3M', '6M', 'YTD', '1Y', '3Y', 'MAX']
 const PERIOD_LABELS: Record<Period, string> = {
-  '1M': '1 เดือน', '3M': '3 เดือน', '6M': '6 เดือน',
-  '1Y': '1 ปี', '3Y': '3 ปี', '5Y': '5 ปี', MAX: 'ทั้งหมด',
+  '1D': 'วันนี้', '1M': '1 เดือน', '3M': '3 เดือน', '6M': '6 เดือน',
+  YTD: 'ปีนี้', '1Y': '1 ปี', '3Y': '3 ปี', MAX: 'ทั้งหมด',
 }
 const METRIC_LABELS: Record<string, string> = {
   '1M': '1เดือน', '3M': '3เดือน', '6M': '6เดือน',
-  '1Y': '1ปี', '3Y': '3ปี', '5Y': '5ปี',
+  YTD: 'ปีนี้', '1Y': '1ปี', '3Y': '3ปี',
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

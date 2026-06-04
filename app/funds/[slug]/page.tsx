@@ -29,6 +29,7 @@ import {
   FUND_TYPE_LABELS,
   DIVIDEND_POLICY_LABELS,
   FUND_STATUS_LABELS,
+  DISPLAY_METRIC_PERIODS,
   METRIC_PERIODS,
   METRIC_TOOLTIPS,
 } from '@/types'
@@ -474,7 +475,14 @@ export default async function FundDetailPage({ params }: Props) {
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-          {METRIC_PERIODS.filter((p) => p !== 'MAX').map((period) => {
+          <MetricCard
+            label="วันนี้"
+            value={dailyChangePct}
+            type="percent"
+            description="ผลตอบแทนจาก NAV ล่าสุดเทียบกับ NAV วันทำการก่อนหน้า"
+            size="sm"
+          />
+          {DISPLAY_METRIC_PERIODS.map((period) => {
             const m = metricsByPeriod[period]
             const sufficient = hasSufficientData(period, m?.navCount)
             const periodLabel = PERIOD_LABELS[period] ?? period
@@ -494,15 +502,6 @@ export default async function FundDetailPage({ params }: Props) {
               </div>
             )
           })}
-          {fund.secReturnYtd != null && Number(fund.secReturnYtd) !== 0 && (
-            <MetricCard
-              label="YTD"
-              value={Number(fund.secReturnYtd)}
-              type="percent"
-              description="ผลตอบแทนนับจากต้นปีถึงปัจจุบัน (ข้อมูลจาก ก.ล.ต.)"
-              size="sm"
-            />
-          )}
         </div>
         {hasLimitedHistory && (
           <p className="text-xs text-slate-400 mt-2">
@@ -582,7 +581,21 @@ export default async function FundDetailPage({ params }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {METRIC_PERIODS.filter((p) => p !== 'MAX').map((period) => {
+                  <tr className="border-b border-slate-100">
+                    <td className="py-3 pr-4 text-sm font-medium text-slate-600">วันนี้</td>
+                    <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(dailyChangePct))}>
+                      {formatPct(dailyChangePct)}
+                    </td>
+                    <td className="py-3 text-right text-sm tabular-nums hidden md:table-cell text-slate-400">-</td>
+                    <td className="py-3 text-right text-sm tabular-nums hidden md:table-cell text-slate-400">-</td>
+                    <td className="py-3 text-right text-sm tabular-nums text-slate-400">-</td>
+                    <td className="py-3 text-right text-sm tabular-nums text-slate-400">-</td>
+                    <td className="py-3 text-right text-sm tabular-nums text-slate-400">-</td>
+                    <td className="py-3 text-right text-xs tabular-nums text-slate-400 hidden sm:table-cell">
+                      {latestNavRecord?.navDate ? formatDateTh(latestNavRecord.navDate) : '-'}
+                    </td>
+                  </tr>
+                  {DISPLAY_METRIC_PERIODS.map((period) => {
                     const m = metricsByPeriod[period]
                     const periodLabel = PERIOD_LABELS[period] ?? period
                     const sufficient = hasSufficientData(period, m?.navCount)
@@ -702,10 +715,17 @@ export default async function FundDetailPage({ params }: Props) {
       )}
 
       {/* Top Holdings */}
-      {Array.isArray(fund.topHoldings) && (fund.topHoldings as {name:string;pct:number}[]).length > 0 && (() => {
-        const holdings = (fund.topHoldings as {name:string;pct:number}[])
-          .filter(h => h.name && h.name.trim() !== '' && !/^\d+\.?\d*$/.test(h.name.trim()) && h.pct > 0)
+      {Array.isArray(fund.topHoldings) && (fund.topHoldings as {name:string;pct:number|string}[]).length > 0 && (() => {
+        const holdings = (fund.topHoldings as {name:string;pct:number|string}[])
+          .map((h) => ({ name: h.name?.trim() ?? '', pct: Number(h.pct) }))
+          .filter(h =>
+            h.name !== '' &&
+            !/^[-+]?\d+(?:\.\d+)?%?$/.test(h.name) &&
+            !/^(หน่วยลงทุนในประเทศ|เงินฝาก|ตราสาร|พันธบัตร)$/.test(h.name) &&
+            Number.isFinite(h.pct) && h.pct > 0
+          )
           .sort((a, b) => b.pct - a.pct)
+          .slice(0, 5)
         if (!holdings.length) return null
         const maxPct = holdings[0].pct
         const asOf = (fund as { topHoldingsAsOf?: string | null }).topHoldingsAsOf

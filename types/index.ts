@@ -107,6 +107,7 @@ export type FundMetricsByPeriod = Partial<Record<MetricPeriod, FundMetricDto>>;
 export type MetricPeriod = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'YTD' | 'MAX';
 
 export const METRIC_PERIODS: MetricPeriod[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'YTD', 'MAX'];
+export const DISPLAY_METRIC_PERIODS: MetricPeriod[] = ['1M', '3M', '6M', 'YTD', '1Y', '3Y'];
 
 // ── Search & Filter Types ───────────────────────
 

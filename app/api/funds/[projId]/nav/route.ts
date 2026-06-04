@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const NavQuerySchema = z.object({
-  period: z.enum(['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']).default('1Y'),
+  period: z.enum(['1D', '1M', '3M', '6M', 'YTD', '1Y', '3Y', 'MAX']).default('1Y'),
   classId: z.coerce.number().int().positive().optional(),
 });
 

@@ -100,9 +100,9 @@ const SECTION_HEADERS = [
   '5 อันดับแรกของกองทุนหลัก',
   'การจัดสรรการลงทุนในผู้ออกตราสาร 5 อันดับแรก',
 ];
-const BAD_NAME = [/^\d+\.?\d*$/, /^[\s]*$/, /% ?NAV/i,
+const BAD_NAME = [/^[-+]?\d+(?:\.\d+)?%?$/, /^[\s]*$/, /% ?NAV/i,
   /^ทรัพย์สิน/, /^ชื่อ/, /^ผู้ออก/, /^ประเภท/, /^Holding/i,
-  /ของพอร์ต/, /^สัดส่วน/];
+  /ของพอร์ต/, /^สัดส่วน/, /^(หน่วยลงทุนในประเทศ|เงินฝาก|ตราสาร|พันธบัตร)$/];
 
 function isValidName(name: string): boolean {
   return !!name && name.trim().length >= 2 && !BAD_NAME.some(p => p.test(name.trim()));

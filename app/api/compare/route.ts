@@ -40,7 +40,7 @@ export const dynamic = 'force-dynamic';
 
 const CompareSchema = z.object({
   funds: z.string().max(200), // comma-separated projIds
-  period: z.enum(['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']).default('1Y'),
+  period: z.enum(['1D', '1M', '3M', '6M', 'YTD', '1Y', '3Y', 'MAX']).default('1Y'),
 });
 
 export async function GET(req: NextRequest) {
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
         amc: { select: { nameTh: true, nameEn: true } },
         fundClasses: { where: { isDefault: true } },
         fundMetrics: {
-          where: { period: { in: ['1M', '3M', '6M', '1Y', '3Y', '5Y'] } },
+          where: { period: { in: ['1M', '3M', '6M', 'YTD', '1Y', '3Y'] } },
           orderBy: { calculatedAt: 'desc' },
           take: 12,
         },

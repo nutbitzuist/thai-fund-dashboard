@@ -58,7 +58,7 @@ export default function AboutPage() {
             </p>
             <ul className="list-disc ml-5 space-y-1 text-sm text-slate-600">
               <li>ข้อมูลอัปเดตอัตโนมัติทุกวันทำการ เวลา 18:30 น.</li>
-              <li>NAV ย้อนหลังสูงสุด 5 ปี</li>
+              <li>NAV ย้อนหลังตามข้อมูลจริงที่มีอยู่: วันนี้, 1 เดือน, 3 เดือน, 6 เดือน, YTD, 1 ปี และ 3 ปี</li>
               <li>ตัวชี้วัดคำนวณใหม่ทุกวัน</li>
             </ul>
           </CardContent>

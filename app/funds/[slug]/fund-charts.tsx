@@ -35,12 +35,12 @@ interface FundChartsProps {
   defaultClassId?: number
 }
 
-type Period = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'
+type Period = '1D' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '3Y' | 'MAX'
 type ChartTab = 'nav' | 'normalized' | 'drawdown' | 'calculator' | 'aum' | 'heatmap'
 
 const PERIOD_LABELS: Record<Period, string> = {
-  '1M': '1เดือน', '3M': '3เดือน', '6M': '6เดือน',
-  '1Y': '1ปี', '3Y': '3ปี', '5Y': '5ปี', MAX: 'ทั้งหมด',
+  '1D': 'วันนี้', '1M': '1เดือน', '3M': '3เดือน', '6M': '6เดือน',
+  YTD: 'ปีนี้', '1Y': '1ปี', '3Y': '3ปี', MAX: 'ทั้งหมด',
 }
 
 function calcAnnualizedReturn(totalReturnPct: number, days: number): number | null {
@@ -146,7 +146,7 @@ export function FundCharts({ projId, defaultClassId }: FundChartsProps) {
 
   const result = calcResult()
 
-  const periods: Period[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']
+  const periods: Period[] = ['1D', '1M', '3M', '6M', 'YTD', '1Y', '3Y', 'MAX']
 
   return (
     <Card>

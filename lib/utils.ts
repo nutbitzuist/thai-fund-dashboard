@@ -64,6 +64,9 @@ export function generateWeekdays(start: Date, end: Date): Date[] {
 export function getPeriodStartDate(period: string, endDate: Date): Date {
   const start = new Date(endDate);
   switch (period) {
+    case '1D':
+      start.setDate(start.getDate() - 7);
+      break;
     case '1M':
       start.setMonth(start.getMonth() - 1);
       break;
@@ -223,6 +226,7 @@ export function fundUrl(fund: { projAbbrName: string | null; projId: string }): 
 // ── Period Label ─────────────────────────────
 
 export const PERIOD_LABELS: Record<string, string> = {
+  '1D': 'วันนี้',
   '1M': '1 เดือน',
   '3M': '3 เดือน',
   '6M': '6 เดือน',
@@ -236,6 +240,7 @@ export const PERIOD_LABELS: Record<string, string> = {
 // ── Minimum NAV data points required per period ──
 
 export const PERIOD_MIN_NAV_COUNT: Record<string, number> = {
+  '1D': 2,
   '1M': 18,
   '3M': 55,
   '6M': 110,

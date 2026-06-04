@@ -87,13 +87,14 @@ const SECTION_HEADERS = [
 ];
 
 const BAD_NAME_PATTERNS = [
-  /^\d+\.?\d*$/,                    // bare number
+  /^[-+]?\d+(?:\.\d+)?%?$/,          // bare number / percentage accidentally parsed as name
   /^[\s]*$/,                        // blank
   /% ?NAV/i,
   /^ทรัพย์สิน/, /^ชื่อ/, /^ผู้ออก/, /^ประเภท/,
   /^Holding/i,
   /ของพอร์ต/,                       // column header in fund-of-funds PDFs
   /^สัดส่วน/,                       // "สัดส่วน %" column header
+  /^(หน่วยลงทุนในประเทศ|เงินฝาก|ตราสาร|พันธบัตร)$/,
 ];
 
 function isValidName(name: string): boolean {

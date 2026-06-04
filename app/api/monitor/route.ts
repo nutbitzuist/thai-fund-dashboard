@@ -14,11 +14,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { appBaseUrl } from '@/lib/utils';
+import { assessProductionMonitor, formatMonitorAlert } from '@/lib/production-monitor';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_STALE_DAYS = 4;
 const GITHUB_REPO = process.env.GITHUB_REPO ?? 'nutbitzuist/thai-fund-dashboard';
 
 async function sendTelegram(text: string): Promise<void> {
@@ -65,26 +66,60 @@ export async function GET(req: NextRequest) {
     // Test 1: raw DB connectivity
     await prisma.$queryRaw`SELECT 1`;
 
-    // Test 2: data freshness
-    const latestNav = await prisma.navPrice.findFirst({
-      orderBy: { navDate: 'desc' },
-      select: { navDate: true },
-    });
+    // Test 2: data freshness and critical counts
+    const [latestNav, activeFunds, totalNavRecords] = await Promise.all([
+      prisma.navPrice.findFirst({
+        orderBy: { navDate: 'desc' },
+        select: { navDate: true },
+      }),
+      prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] } } }),
+      prisma.navPrice.count(),
+    ]);
     const daysSince = latestNav
       ? Math.floor((Date.now() - new Date(latestNav.navDate).getTime()) / 86400000)
       : 999;
 
-    if (daysSince > MAX_STALE_DAYS) {
-      await sendTelegram(
-        `⚠️ <b>Thai Fund Dashboard — ข้อมูลเก่า</b>\n` +
-        `NAV ล่าสุด: ${latestNav?.navDate?.toISOString().split('T')[0] ?? 'ไม่มีข้อมูล'} (${daysSince} วันที่แล้ว)\n` +
-        `ระบบ sync อาจหยุดทำงาน`,
-      );
+    // Test 3: public health + sitemap sanity. These catch routing/canonical regressions
+    // that DB-only cron checks miss.
+    const base = appBaseUrl();
+    const [healthRes, sitemapRes] = await Promise.allSettled([
+      fetch(`${base}/api/health`, { cache: 'no-store' }),
+      fetch(`${base}/sitemap.xml`, { cache: 'no-store' }),
+    ]);
+    const apiHealthOk = healthRes.status === 'fulfilled' && healthRes.value.ok;
+    let sitemapOk = false;
+    let sitemapUrlCount = 0;
+    if (sitemapRes.status === 'fulfilled' && sitemapRes.value.ok) {
+      const xml = await sitemapRes.value.text();
+      sitemapOk = xml.includes('<urlset') && xml.includes(`${base}/funds/`) && !xml.includes('thai-fund-dashboard.vercel.app');
+      sitemapUrlCount = (xml.match(/<loc>/g) ?? []).length;
+    }
+
+    const monitorInput = {
+      dbOk: true,
+      apiHealthOk,
+      sitemapOk,
+      daysSinceLastNav: daysSince,
+      activeFunds,
+      totalNavRecords,
+      sitemapUrlCount,
+    };
+    const assessment = assessProductionMonitor(monitorInput);
+
+    if (assessment.alertNeeded) {
+      await sendTelegram(formatMonitorAlert(monitorInput, assessment));
     }
 
     return NextResponse.json(
-      { ok: true, latencyMs: Date.now() - t0, daysSinceLastNav: daysSince },
-      { headers: { 'Cache-Control': 'no-store' } },
+      {
+        ok: assessment.severity !== 'critical',
+        severity: assessment.severity,
+        messages: assessment.messages,
+        latencyMs: Date.now() - t0,
+        lastNavDate: latestNav?.navDate?.toISOString().split('T')[0] ?? null,
+        ...monitorInput,
+      },
+      { status: assessment.severity === 'critical' ? 503 : 200, headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (err) {
     // DB is down — alert + auto-recover

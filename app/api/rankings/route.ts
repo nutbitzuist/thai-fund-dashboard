@@ -8,6 +8,7 @@ import { createErrorResponse, handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { publicCacheHeaders } from '@/lib/cache-headers';
 import { PERIOD_MIN_NAV_COUNT } from '@/lib/utils';
+import { calculateFundHealthScore } from '@/lib/fund-health-score';
 
 // Inline type for FundMetric with includes (Prisma 7 compat)
 interface MetricWithRelations {
@@ -27,6 +28,8 @@ interface MetricWithRelations {
     fundType: string | null;
     riskLevel: number | null;
     dividendPolicy: string | null;
+    regisDate: Date | null;
+    totalExpenseRatio: unknown;
     amc: { nameTh: string } | null;
   };
   fundClass: { classAbbrName: string };
@@ -125,6 +128,8 @@ export async function GET(req: NextRequest) {
             fundType: true,
             riskLevel: true,
             dividendPolicy: true,
+            regisDate: true,
+            totalExpenseRatio: true,
             amc: { select: { nameTh: true } },
           },
         },
@@ -150,7 +155,21 @@ export async function GET(req: NextRequest) {
     const total = latestMetrics.length;
     const metrics = latestMetrics.slice(skip, skip + limit);
 
-    const data = metrics.map((m, idx) => ({
+    const data = metrics.map((m, idx) => {
+      const fundAgeYears = m.fund.regisDate
+        ? Math.max(0, (m.endDate.getTime() - new Date(m.fund.regisDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+        : null;
+      const health = calculateFundHealthScore({
+        return1Y: m.returnPct != null ? Number(m.returnPct) : null,
+        volatility1Y: m.annualizedVolatilityPct != null ? Number(m.annualizedVolatilityPct) : null,
+        maxDrawdown1Y: m.maxDrawdownPct != null ? Number(m.maxDrawdownPct) : null,
+        sharpe1Y: m.sharpeRatio != null ? Number(m.sharpeRatio) : null,
+        navCount1Y: m.navCount,
+        riskLevel: m.fund.riskLevel,
+        totalExpenseRatio: m.fund.totalExpenseRatio != null ? Number(m.fund.totalExpenseRatio) : null,
+        fundAgeYears,
+      });
+      return {
       rank: skip + idx + 1,
       projId: m.fund.projId,
       projAbbrName: m.fund.projAbbrName,
@@ -167,7 +186,9 @@ export async function GET(req: NextRequest) {
       sharpeRatio: m.sharpeRatio != null ? Number(m.sharpeRatio) : null,
       navCount: m.navCount,
       endDate: m.endDate.toISOString().split('T')[0],
-    }));
+      healthScore: health.score,
+      healthGrade: health.grade,
+    }});
 
     return NextResponse.json(
       {

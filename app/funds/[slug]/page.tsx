@@ -46,6 +46,7 @@ import {
   fundUrl,
   appBaseUrl,
 } from '@/lib/utils'
+import { calculateFundHealthScore, explainFundHealthScore } from '@/lib/fund-health-score'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -228,6 +229,20 @@ export default async function FundDetailPage({ params }: Props) {
 
   const m1Y = metricsByPeriod['1Y']
   const my1YReturn = m1Y?.returnPct != null ? Number(m1Y.returnPct) : null
+  const fundAgeYears = fund.regisDate && referenceDateMs != null
+    ? Math.max(0, (referenceDateMs - new Date(fund.regisDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+    : null
+  const healthScore = calculateFundHealthScore({
+    return1Y: my1YReturn,
+    volatility1Y: m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
+    maxDrawdown1Y: m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
+    sharpe1Y: m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
+    navCount1Y: m1Y?.navCount,
+    riskLevel: fund.riskLevel,
+    totalExpenseRatio: fund.totalExpenseRatio != null ? Number(fund.totalExpenseRatio) : null,
+    fundAgeYears,
+  })
+  const healthExplanation = explainFundHealthScore(healthScore)
   const compareUrl = `/compare?funds=${fund.projId}`
 
   const base = appBaseUrl()
@@ -460,6 +475,39 @@ export default async function FundDetailPage({ params }: Props) {
                   })()}
                 </div>
               )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bulltiq Health Score */}
+      <Card className="border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50">
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-blue-700 text-white">Bulltiq Fund Health Score</Badge>
+                <Badge variant="outline">{healthScore.grade}</Badge>
+              </div>
+              <h2 className="text-lg font-bold text-slate-900">อ่านกองทุนนี้แบบเร็ว: {healthScore.score}/100</h2>
+              <p className="max-w-3xl text-sm leading-6 text-slate-600">{healthExplanation}</p>
+              <p className="text-xs text-slate-500">
+                Methodology: 30% ผลตอบแทน, 25% ความเสี่ยง, 20% Sharpe/ความสม่ำเสมอ, 10% ค่าใช้จ่าย, 15% คุณภาพข้อมูลย้อนหลัง
+              </p>
+            </div>
+            <div className="grid grid-cols-5 gap-2 text-center lg:min-w-[420px]">
+              {[
+                ['Return', healthScore.components.return],
+                ['Risk', healthScore.components.risk],
+                ['Consistency', healthScore.components.consistency],
+                ['Cost', healthScore.components.cost],
+                ['Data', healthScore.components.dataQuality],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-white bg-white/80 p-2 shadow-sm">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+                  <p className="text-lg font-bold text-slate-900">{value}</p>
+                </div>
+              ))}
             </div>
           </div>
         </CardContent>

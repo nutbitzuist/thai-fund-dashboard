@@ -11,6 +11,7 @@ const navLinks = [
   { href: '/funds',    label: 'กองทุน' },
   { href: '/movers',   label: 'วันนี้' },
   { href: '/rankings', label: 'จัดอันดับ' },
+  { href: '/insights', label: 'Insights' },
   { href: '/heatmap',  label: 'Heatmap' },
   { href: '/amcs',     label: 'บลจ.' },
 ]

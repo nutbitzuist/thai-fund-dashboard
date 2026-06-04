@@ -2,6 +2,7 @@
 import type { MetadataRoute } from 'next';
 import prisma from '@/lib/db';
 import { appBaseUrl } from '@/lib/utils';
+import { SEO_LANDING_PAGES } from '@/lib/bulltiq-content';
 
 export const revalidate = 86400; // 24h
 
@@ -23,6 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/tools/deposit-compare`,   lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
     { url: `${base}/tools/twin`,              lastModified: now, changeFrequency: 'weekly',  priority: 0.7 },
     { url: `${base}/watchlist`,               lastModified: now, changeFrequency: 'weekly',  priority: 0.6 },
+    { url: `${base}/insights`,                lastModified: now, changeFrequency: 'daily',   priority: 0.8 },
     { url: `${base}/learn`,                   lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
     { url: `${base}/methodology`,             lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
     { url: `${base}/about`,                   lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
@@ -33,6 +35,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: now,
     changeFrequency: 'weekly' as const,
     priority: 0.7,
+  }));
+
+  const insightPages: MetadataRoute.Sitemap = SEO_LANDING_PAGES.map((page) => ({
+    url: `${base}/insights/${page.slug}`,
+    lastModified: now,
+    changeFrequency: 'daily' as const,
+    priority: 0.85,
   }));
 
   try {
@@ -58,8 +67,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
     }));
 
-    return [...staticPages, ...typePages, ...fundPages, ...amcPages];
+    return [...staticPages, ...typePages, ...insightPages, ...fundPages, ...amcPages];
   } catch {
-    return [...staticPages, ...typePages];
+    return [...staticPages, ...typePages, ...insightPages];
   }
 }

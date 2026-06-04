@@ -61,15 +61,15 @@ export function RmfSsfClient({ topRmf, topSsf }: Props) {
   const [rmfAmount, setRmfAmount] = useState(0)
   const [ssfAmount, setSsfAmount] = useState(0)
 
-  const inputs: DeductionInputs = {
+  const inputs = useMemo<DeductionInputs>(() => ({
     annualIncome, spouseAllowance, childrenCount,
     lifeInsurance, providentFund, rmfAmount, ssfAmount,
-  }
+  }), [annualIncome, spouseAllowance, childrenCount, lifeInsurance, providentFund, rmfAmount, ssfAmount])
 
   const result = useMemo(() => {
     if (annualIncome <= 0) return null
     return calculateTaxResult(inputs)
-  }, [annualIncome, spouseAllowance, childrenCount, lifeInsurance, providentFund, rmfAmount, ssfAmount])
+  }, [annualIncome, inputs])
 
   const maxRmfSsf = annualIncome > 0 ? Math.min(annualIncome * 0.3, 500_000) : 500_000
 

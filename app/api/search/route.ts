@@ -84,7 +84,8 @@ export async function GET(req: NextRequest) {
         today && prev
           ? ((Number(today.lastVal) - Number(prev.lastVal)) / Number(prev.lastVal)) * 100
           : null
-      const { navPrices: _, ...rest } = f as RawFund & { navPrices: unknown[] }
+      const { navPrices: _navPrices, ...rest } = f as RawFund & { navPrices: unknown[] }
+      void _navPrices
       return { ...rest, dailyChangePct, latestNav: today ? Number(today.lastVal) : null }
     })
 

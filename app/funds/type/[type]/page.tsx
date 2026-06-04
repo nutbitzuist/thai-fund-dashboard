@@ -5,7 +5,7 @@ import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { AlertTriangle, Shield, PiggyBank, ArrowRight } from 'lucide-react'
+import { AlertTriangle, Shield, PiggyBank } from 'lucide-react'
 import { FUND_TYPE_LABELS } from '@/types'
 import { TypeFundBrowser } from './type-fund-browser'
 

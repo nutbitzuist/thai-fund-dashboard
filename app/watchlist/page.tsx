@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Heart, TrendingUp, Trash2, ArrowRight, Search } from 'lucide-react'
-import { useWatchlist, type WatchlistItem } from '@/hooks/useWatchlist'
+import { useWatchlist } from '@/hooks/useWatchlist'
 import { Button } from '@/components/ui/button'
 import { FUND_TYPE_LABELS } from '@/types'
 import { fundUrl, formatPct, formatNav, getReturnColorClass, cn, formatDateTh } from '@/lib/utils'
@@ -96,7 +96,7 @@ export default function WatchlistPage() {
           <Heart className="h-12 w-12 text-slate-300 mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-slate-600 mb-2">ยังไม่มีกองทุนที่ติดตาม</h2>
           <p className="text-slate-400 text-sm mb-6 max-w-sm mx-auto">
-            กดปุ่ม "ติดตาม" บนหน้าข้อมูลกองทุนเพื่อบันทึกไว้ที่นี่
+            กดปุ่ม &ldquo;ติดตาม&rdquo; บนหน้าข้อมูลกองทุนเพื่อบันทึกไว้ที่นี่
           </p>
           <Link href="/rankings">
             <Button>

@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { RiskBadge } from '@/components/metrics/risk-badge'
 import { RANKING_PRESETS, FUND_TYPE_LABELS } from '@/types'
 import { fundUrl } from '@/lib/utils'
-import { cn, formatPct, getReturnColorClass } from '@/lib/utils'
+import { cn, getReturnColorClass } from '@/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { Download } from 'lucide-react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -15,7 +15,7 @@ const DrawdownChart = dynamic(() => import('@/components/charts/drawdown-chart')
 const AumChart = dynamic(() => import('@/components/charts/aum-chart').then((m) => ({ default: m.AumChart })), { ssr: false, loading: ChartSkeleton })
 const MonthlyHeatmap = dynamic(() => import('@/components/charts/monthly-heatmap').then((m) => ({ default: m.MonthlyHeatmap })), { ssr: false, loading: ChartSkeleton })
 import { calcDrawdownSeries } from '@/lib/calculations'
-import { formatPct, formatNav, getReturnColorClass, cn } from '@/lib/utils'
+import { formatPct, formatNav, cn } from '@/lib/utils'
 
 interface NavPoint {
   date: string
@@ -339,7 +339,6 @@ function PortfolioCalculator({
               label="เงินลงทุนเริ่มต้น"
               value={formatThb(result.amount)}
               sub={`NAV ณ วันนั้น: ${formatNav(result.startNav)}`}
-              neutral
             />
             <ResultCard
               label="มูลค่าปัจจุบัน"
@@ -382,14 +381,12 @@ function ResultCard({
   sub,
   positive,
   negative,
-  neutral,
 }: {
   label: string
   value: string
   sub?: string
   positive?: boolean
   negative?: boolean
-  neutral?: boolean
 }) {
   const valueClass = positive
     ? 'text-green-600'

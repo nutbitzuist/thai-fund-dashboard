@@ -2,7 +2,7 @@
 
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ExternalLink, Heart, Mail, AlertTriangle } from 'lucide-react'
+import { ExternalLink, Heart, AlertTriangle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 
 export const metadata: Metadata = {

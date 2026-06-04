@@ -8,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine,
 } from 'recharts'
 import { formatDateTh, formatNav } from '@/lib/utils'
 

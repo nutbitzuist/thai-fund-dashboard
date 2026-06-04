@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { TrendingUp, TrendingDown } from 'lucide-react'
-import { cn, formatPct, fundUrl, formatDateTh } from '@/lib/utils'
+import { cn, fundUrl, formatDateTh } from '@/lib/utils'
 import { FUND_TYPE_LABELS } from '@/types'
 
 interface MoverRow {

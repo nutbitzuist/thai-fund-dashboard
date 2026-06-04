@@ -2,8 +2,7 @@
 
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
-import Link from 'next/link'
-import { TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { MoversClient } from './movers-client'
 
 export const metadata: Metadata = {

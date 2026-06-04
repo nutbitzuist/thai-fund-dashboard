@@ -21,7 +21,6 @@ import { METRIC_PERIODS } from '@/types';
 
 const BATCH_SIZE = 10; // funds per batch for NAV sync
 const INTER_BATCH_DELAY = 2000; // ms between batches
-const MAX_HISTORY_DAYS = 365 * 5 + 30; // 5 years + buffer
 
 // ── Sync AMC ─────────────────────────────────
 

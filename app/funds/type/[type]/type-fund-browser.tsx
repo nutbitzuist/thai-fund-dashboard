@@ -8,7 +8,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RiskBadge } from '@/components/metrics/risk-badge'
-import { cn, formatPct, getReturnColorClass, fundUrl } from '@/lib/utils'
+import { cn, getReturnColorClass, fundUrl } from '@/lib/utils'
 
 interface FundRow {
   rank: number

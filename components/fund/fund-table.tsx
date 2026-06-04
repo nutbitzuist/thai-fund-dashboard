@@ -179,7 +179,6 @@ export function FundTable({
   onSort,
   loading = false,
   showAmc = true,
-  onAddCompare,
 }: FundTableProps) {
   if (loading) return <LoadingSkeleton />
 

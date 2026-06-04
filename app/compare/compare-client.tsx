@@ -23,7 +23,7 @@ import {
 import { NormalizedChart } from '@/components/charts/normalized-chart'
 import { RiskBadge } from '@/components/metrics/risk-badge'
 import { COMPARE_COLORS, FUND_TYPE_LABELS, DIVIDEND_POLICY_LABELS } from '@/types'
-import { cn, formatPct, formatAUM, formatDateTh, getReturnColorClass, fundUrl, PERIOD_MIN_NAV_COUNT, hasSufficientData } from '@/lib/utils'
+import { cn, formatPct, formatAUM, formatDateTh, getReturnColorClass, fundUrl, hasSufficientData } from '@/lib/utils'
 import Link from 'next/link'
 
 // ── Types ──────────────────────────────────────────────────────────────────────

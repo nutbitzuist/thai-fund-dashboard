@@ -100,7 +100,6 @@ interface PeriodMetricRowProps {
 }
 
 export function PeriodMetricRow({
-  period,
   periodLabel,
   returnPct,
   volatility,

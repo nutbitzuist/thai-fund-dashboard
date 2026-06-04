@@ -142,7 +142,7 @@ export default function MethodologyPage() {
               <ul className="list-disc ml-4 space-y-1">
                 <li><code>proj_abbr_name</code> จาก Factsheet และ <code>class_abbr_name</code> จาก DailyInfo เป็นคนละ concept</li>
                 <li>ระบบบันทึกทุก class ที่ได้รับจาก DailyInfo</li>
-                <li><strong>Default Class Rule:</strong> เลือก class ที่ชื่อลงท้ายด้วย "-A" ก่อน ถ้าไม่มีให้ใช้ตัวแรก (เรียงตามตัวอักษร)</li>
+                <li><strong>Default Class Rule:</strong> เลือก class ที่ชื่อลงท้ายด้วย &ldquo;-A&rdquo; ก่อน ถ้าไม่มีให้ใช้ตัวแรก (เรียงตามตัวอักษร)</li>
                 <li>ตัวชี้วัดคำนวณจาก default class เท่านั้น</li>
               </ul>
             </div>

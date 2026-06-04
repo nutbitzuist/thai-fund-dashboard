@@ -2,7 +2,7 @@
 
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Building2, TrendingUp, ChevronRight } from 'lucide-react'
+import { Building2, ChevronRight } from 'lucide-react'
 import prisma from '@/lib/db'
 import { formatPct, getReturnColorClass, cn } from '@/lib/utils'
 

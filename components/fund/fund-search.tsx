@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Search, X, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn, formatPct, getReturnColorClass, fundUrl } from '@/lib/utils'
-import { RISK_LEVEL_LABELS, FUND_TYPE_LABELS } from '@/types'
+import { FUND_TYPE_LABELS } from '@/types'
 
 interface FundResult {
   id: number
@@ -202,7 +202,7 @@ export function FundSearch({
 
       {open && !loading && query && results.length === 0 && (
         <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-xl border border-slate-200 bg-white shadow-xl px-4 py-3 text-sm text-slate-400">
-          ไม่พบกองทุน "{query}"
+          ไม่พบกองทุน &ldquo;{query}&rdquo;
         </div>
       )}
     </div>

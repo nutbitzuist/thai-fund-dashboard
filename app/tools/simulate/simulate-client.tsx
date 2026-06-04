@@ -144,7 +144,7 @@ export function SimulateClient() {
         valueSeries,
       }
     }).filter((r): r is SimResult => r !== null)
-  }, [funds, startDate, endDate, investAmount, navCache.current.size])
+  }, [funds, startDate, endDate, investAmount])
 
   const chartSeries: SimulatorSeries[] = simulationResults.map((r) => ({
     projId: r.fund.projId,

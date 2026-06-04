@@ -94,12 +94,14 @@ type FundBaseRow = {
 
 type MetricRow = {
   fundId: number;
+  fundClassId: number;
   period: string;
   returnPct: unknown;
   annualizedVolatilityPct: unknown;
   maxDrawdownPct: unknown;
   sharpeRatio: unknown;
   navCount: unknown;
+  endDate: Date;
 };
 
 function buildFundDto(
@@ -178,24 +180,44 @@ export async function GET(req: NextRequest) {
       const metricWhere = {
         period,
         [field]: { not: null },
-        navCount: { gte: PERIOD_MIN_NAV_COUNT[period] ?? 0 },
         fundClass: { isDefault: true },
         fund: where,
       };
 
-      // Step 1: count total + get ordered fundIds (no fund data yet)
-      const [total, sortedRows] = await Promise.all([
-        prisma.fundMetric.count({ where: metricWhere }),
-        prisma.fundMetric.findMany({
-          where: metricWhere,
-          orderBy: { [field]: sortDir },
-          skip,
-          take: limit,
-          select: { fundId: true },
-        }),
-      ]);
+      // Step 1: get latest metric per default fund class, then sort/paginate.
+      // Backfills create multiple metric rows over time; rankings must reflect
+      // the latest derived row only, not stale historical calculations.
+      const metricRows = await prisma.fundMetric.findMany({
+        where: metricWhere,
+        orderBy: [{ fundClassId: 'asc' }, { endDate: 'desc' }],
+        select: {
+          fundId: true,
+          fundClassId: true,
+          period: true,
+          returnPct: true,
+          annualizedVolatilityPct: true,
+          maxDrawdownPct: true,
+          sharpeRatio: true,
+          navCount: true,
+          endDate: true,
+        },
+      }) as MetricRow[];
 
-      const fundIds = sortedRows.map((r) => r.fundId);
+      const latestByClass = new Map<number, MetricRow>();
+      for (const row of metricRows) {
+        if (!latestByClass.has(row.fundClassId)) latestByClass.set(row.fundClassId, row);
+      }
+
+      const sortedRows = Array.from(latestByClass.values())
+        .filter((row) => Number(row.navCount ?? 0) >= (PERIOD_MIN_NAV_COUNT[period] ?? 0))
+        .sort((a, b) => {
+          const aValue = Number(a[field as keyof MetricRow] ?? Number.NEGATIVE_INFINITY);
+          const bValue = Number(b[field as keyof MetricRow] ?? Number.NEGATIVE_INFINITY);
+          return sortDir === 'desc' ? bValue - aValue : aValue - bValue;
+        });
+
+      const total = sortedRows.length;
+      const fundIds = sortedRows.slice(skip, skip + limit).map((r) => r.fundId);
 
       if (!fundIds.length) {
         // Don't CDN-cache empty results — a zero-result response from a DB hiccup
@@ -218,14 +240,17 @@ export async function GET(req: NextRequest) {
             period: { in: ['1Y', '3Y'] },
             fundClass: { isDefault: true },
           },
+          orderBy: [{ fundClassId: 'asc' }, { period: 'asc' }, { endDate: 'desc' }],
           select: {
             fundId: true,
+            fundClassId: true,
             period: true,
             returnPct: true,
             annualizedVolatilityPct: true,
             maxDrawdownPct: true,
             sharpeRatio: true,
             navCount: true,
+            endDate: true,
           },
         }),
       ]);
@@ -235,7 +260,7 @@ export async function GET(req: NextRequest) {
       const metricMap = new Map<number, Record<string, MetricRow>>();
       for (const m of allMetrics as MetricRow[]) {
         if (!metricMap.has(m.fundId)) metricMap.set(m.fundId, {});
-        metricMap.get(m.fundId)![m.period] = m;
+        if (!metricMap.get(m.fundId)![m.period]) metricMap.get(m.fundId)![m.period] = m;
       }
 
       // Rebuild in sort order
@@ -266,15 +291,18 @@ export async function GET(req: NextRequest) {
           ...FUND_BASE_SELECT,
           fundMetrics: {
             where: { period: { in: ['1Y', '3Y'] }, fundClass: { isDefault: true } },
-            orderBy: { calculatedAt: 'desc' as const },
-            take: 4,
+            orderBy: [{ period: 'asc' as const }, { endDate: 'desc' as const }],
+            take: 10,
             select: {
+              fundId: true,
+              fundClassId: true,
               period: true,
               returnPct: true,
               annualizedVolatilityPct: true,
               maxDrawdownPct: true,
               sharpeRatio: true,
               navCount: true,
+              endDate: true,
             },
           },
         },
@@ -282,8 +310,12 @@ export async function GET(req: NextRequest) {
     ]);
 
     const fundList = (funds as (FundBaseRow & { fundMetrics: MetricRow[] })[]).map((f) => {
-      const m1Y = f.fundMetrics.find((m) => m.period === '1Y');
-      const m3Y = f.fundMetrics.find((m) => m.period === '3Y');
+      const latestMetrics = new Map<string, MetricRow>();
+      for (const m of f.fundMetrics) {
+        if (!latestMetrics.has(m.period)) latestMetrics.set(m.period, m);
+      }
+      const m1Y = latestMetrics.get('1Y');
+      const m3Y = latestMetrics.get('3Y');
       return buildFundDto(f, m1Y, m3Y);
     });
 

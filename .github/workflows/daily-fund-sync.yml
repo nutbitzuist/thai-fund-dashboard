@@ -1,0 +1,42 @@
+name: Daily Fund Data Sync
+
+# Runs after Thai fund NAVs are usually published. GitHub Actions is used instead
+# of Vercel Cron because the full SEC NAV sync can exceed Vercel Hobby's 60s cap.
+on:
+  schedule:
+    - cron: '45 11 * * 1-5' # 18:45 Bangkok, weekdays
+  workflow_dispatch:
+  repository_dispatch:
+    types: [daily-sync]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run production daily sync
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEC_API_KEY: ${{ secrets.SEC_API_KEY }}
+          SEC_NAV_API_KEY: ${{ secrets.SEC_NAV_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NODE_ENV: production
+        run: npx tsx scripts/run-daily-sync.ts
+
+      - name: Verify production data health
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NODE_ENV: production
+        run: npx tsx scripts/audit-data-health.ts --fail-on-stale --json

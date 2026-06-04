@@ -11,6 +11,7 @@ import prisma from '@/lib/db';
 import { handleRouteError } from '@/lib/errors';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { publicCacheHeaders } from '@/lib/cache-headers';
+import { PERIOD_MIN_NAV_COUNT } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,9 +24,12 @@ const Schema = z.object({
 });
 
 interface MetricRow {
+  fundClassId: number;
   returnPct: unknown;
   sharpeRatio: unknown;
   annualizedVolatilityPct: unknown;
+  navCount: number | null;
+  endDate: Date;
   fund: {
     projId: string;
     projAbbrName: string | null;
@@ -64,18 +68,23 @@ export async function GET(req: NextRequest) {
     const fundWhere: Record<string, unknown> = { fundStatus: { in: ['RG', 'SE'] } };
     if (fundType) fundWhere.fundType = fundType;
 
-    // Fetch all metrics for the period (default class, active funds, with AMC info)
-    const metrics = await prisma.fundMetric.findMany({
+    // Fetch metrics for the period, then reduce to the latest row per default
+    // fund class so AMC rankings cannot be inflated by stale backfill rows.
+    const allMetrics = await prisma.fundMetric.findMany({
       where: {
         period: dbPeriod,
         returnPct: { not: null },
         fundClass: { isDefault: true },
         fund: fundWhere,
       },
+      orderBy: [{ fundClassId: 'asc' }, { endDate: 'desc' }],
       select: {
+        fundClassId: true,
         returnPct: true,
         sharpeRatio: true,
         annualizedVolatilityPct: true,
+        navCount: true,
+        endDate: true,
         fund: {
           select: {
             projId: true,
@@ -87,6 +96,15 @@ export async function GET(req: NextRequest) {
         },
       },
     }) as MetricRow[];
+
+    const latestByClass = new Map<number, MetricRow>();
+    for (const metricRow of allMetrics) {
+      if (!latestByClass.has(metricRow.fundClassId)) latestByClass.set(metricRow.fundClassId, metricRow);
+    }
+
+    const minNavCount = PERIOD_MIN_NAV_COUNT[dbPeriod] ?? 0;
+    const metrics = Array.from(latestByClass.values())
+      .filter((m) => (m.navCount ?? 0) >= minNavCount);
 
     // Group by AMC
     const amcMap = new Map<number, {

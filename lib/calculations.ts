@@ -4,6 +4,8 @@
 // All inputs are arrays of { date, nav } sorted ascending
 // ─────────────────────────────────────────────
 
+import { PERIOD_MIN_NAV_COUNT } from '@/lib/utils';
+
 const DEFAULT_RISK_FREE_RATE = parseFloat(
   process.env.RISK_FREE_RATE ?? '0.015'
 ); // 1.5% default
@@ -152,7 +154,9 @@ export function calcMetrics(
     (p) => p.date >= startDate && p.date <= endDate
   );
 
-  if (inRange.length < 2) {
+  const minNavCount = PERIOD_MIN_NAV_COUNT[period] ?? 2;
+
+  if (inRange.length < minNavCount) {
     return {
       period,
       startDate,

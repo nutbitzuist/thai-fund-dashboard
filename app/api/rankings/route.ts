@@ -11,6 +11,7 @@ import { PERIOD_MIN_NAV_COUNT } from '@/lib/utils';
 
 // Inline type for FundMetric with includes (Prisma 7 compat)
 interface MetricWithRelations {
+  fundClassId: number;
   period: string;
   returnPct: unknown;
   annualizedVolatilityPct: unknown;
@@ -99,24 +100,21 @@ export async function GET(req: NextRequest) {
     if (amcIdList.length === 1) fundWhere.amcId = amcIdList[0];
     else if (amcIdList.length > 1) fundWhere.amcId = { in: amcIdList };
 
-    // Fetch latest metrics for the relevant period
-    // navCount filter ensures only funds with sufficient history appear in rankings
+    // Fetch metrics for the relevant period and reduce to the latest metric row
+    // per default fund class before sorting. Historical backfills create newer
+    // rows with newer endDate values; older rows must not stay visible in
+    // rankings or totals.
     const minNavCount = PERIOD_MIN_NAV_COUNT[period] ?? 0;
     const metricWhere = {
       period,
       [`${metricField}`]: { not: null },
-      navCount: { gte: minNavCount },
       fundClass: { isDefault: true },
       fund: fundWhere,
     };
 
-    const metrics = await prisma.fundMetric.findMany({
+    const allMetrics = await prisma.fundMetric.findMany({
       where: metricWhere,
-      orderBy: {
-        [metricField]: sort,
-      },
-      skip,
-      take: limit,
+      orderBy: [{ fundClassId: 'asc' }, { endDate: 'desc' }],
       include: {
         fund: {
           select: {
@@ -134,11 +132,25 @@ export async function GET(req: NextRequest) {
           select: { classAbbrName: true },
         },
       },
-    });
+    }) as MetricWithRelations[];
 
-    const total = await prisma.fundMetric.count({ where: metricWhere });
+    const latestByClass = new Map<number, MetricWithRelations>();
+    for (const metricRow of allMetrics) {
+      if (!latestByClass.has(metricRow.fundClassId)) latestByClass.set(metricRow.fundClassId, metricRow);
+    }
 
-    const data = (metrics as MetricWithRelations[]).map((m, idx) => ({
+    const latestMetrics = Array.from(latestByClass.values())
+      .filter((m) => (m.navCount ?? 0) >= minNavCount)
+      .sort((a, b) => {
+        const aValue = Number(a[metricField as keyof MetricWithRelations] ?? Number.NEGATIVE_INFINITY);
+        const bValue = Number(b[metricField as keyof MetricWithRelations] ?? Number.NEGATIVE_INFINITY);
+        return sort === 'desc' ? bValue - aValue : aValue - bValue;
+      });
+
+    const total = latestMetrics.length;
+    const metrics = latestMetrics.slice(skip, skip + limit);
+
+    const data = metrics.map((m, idx) => ({
       rank: skip + idx + 1,
       projId: m.fund.projId,
       projAbbrName: m.fund.projAbbrName,

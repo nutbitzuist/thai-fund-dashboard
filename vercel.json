@@ -2,14 +2,6 @@
   "regions": ["sin1"],
   "crons": [
     {
-      "path": "/api/sync/daily",
-      "schedule": "30 11 * * *"
-    },
-    {
-      "path": "/api/sync/retry",
-      "schedule": "0 13 * * *"
-    },
-    {
       "path": "/api/sync/backfill",
       "schedule": "0 5 * * *"
     },

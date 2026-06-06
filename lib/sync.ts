@@ -30,7 +30,7 @@ export async function syncAmcs(): Promise<number> {
 
   for (const amc of amcs) {
     if (!amc.unique_id) continue;
-    // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+    // Use raw SQL for deterministic upserts and adapter compatibility
     await prisma.$executeRaw`
       INSERT INTO amc ("uniqueId", "nameTh", "nameEn", "createdAt", "updatedAt")
       VALUES (${amc.unique_id}, ${amc.name_th ?? ''}, ${amc.name_en ?? null}, NOW(), NOW())
@@ -73,7 +73,7 @@ export async function syncFunds(): Promise<number> {
           ? new Date(regisDateRaw)
           : null;
 
-      // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+      // Use raw SQL for deterministic upserts and adapter compatibility
       await prisma.$executeRaw`
         INSERT INTO fund ("projId", "projAbbrName", "nameTh", "nameEn", "fundStatus",
                           "uniqueId", "amcId", "fundType", "riskLevel", "dividendPolicy",
@@ -164,7 +164,7 @@ export async function syncNavForFund(
       const netAsset =
         item.net_asset != null && item.net_asset > 0 ? item.net_asset : null;
 
-      // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+      // Use raw SQL for deterministic upserts and adapter compatibility
       const buyPrice = item.buy_price ? parseFloat(item.buy_price) : null;
       const sellPrice = item.sell_price ? parseFloat(item.sell_price) : null;
       await prisma.$executeRaw`
@@ -385,7 +385,7 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
 
     if (result.navCount < 2) continue;
 
-    // PrismaNeonHttp doesn't support interactive transactions — use raw SQL
+    // Use raw SQL for deterministic upserts and adapter compatibility
     await prisma.$executeRaw`
       INSERT INTO fund_metric ("fundId", "fundClassId", period, "startDate", "endDate",
                                "returnPct", "annualizedVolatilityPct", "maxDrawdownPct",

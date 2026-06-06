@@ -230,7 +230,7 @@ async function syncFundNavs(
       const netAsset = item.net_asset != null && item.net_asset > 0 ? item.net_asset : null;
       const buyPrice = item.buy_price ? parseFloat(item.buy_price) : null;
       const sellPrice = item.sell_price ? parseFloat(item.sell_price) : null;
-      // Use raw SQL — PrismaNeonHttp doesn't support the transactions upsert uses internally
+      // Use raw SQL — Prisma transaction support varies by adapter; raw SQL keeps this path explicit
       await prisma.$executeRaw`
         INSERT INTO nav_price ("fundId", "fundClassId", "navDate", "lastVal",
                                "buyPrice", "sellPrice", "netAsset", "createdAt", "updatedAt")
@@ -335,7 +335,7 @@ async function calcMetricsForFund(prisma: PrismaClient, fundId: number): Promise
     const sharpe = vol && vol > 0 ? (ret - riskFreeRate) / vol : null;
     const navCount = navPoints.filter((n) => n.date >= startDate && n.date <= endDate).length;
 
-    // Use raw SQL — PrismaNeonHttp doesn't support the transactions upsert uses internally
+    // Use raw SQL — Prisma transaction support varies by adapter; raw SQL keeps this path explicit
     await prisma.$executeRaw`
       INSERT INTO fund_metric ("fundId", "fundClassId", period, "startDate", "endDate",
                                "returnPct", "annualizedVolatilityPct", "maxDrawdownPct",
@@ -388,35 +388,9 @@ async function main() {
   const navApiKey = process.env.SEC_NAV_API_KEY;
   if (!navApiKey) throw new Error('SEC_NAV_API_KEY is not set. Run: source .env.local && DATABASE_URL="$DATABASE_URL" SEC_NAV_API_KEY="$SEC_NAV_API_KEY" npx tsx scripts/backfill-navs.ts');
 
-  // Neon URLs: use WebSocket Pool (PrismaNeon) — supports full transactions.
-  // PrismaNeonHttp (HTTP) does NOT support transactions which Prisma uses internally.
-  // WebSocket avoids the SCRAM-SHA-256-PLUS channel binding issue that blocks TCP.
-  // Force IPv4 DNS so the WebSocket connection doesn't time out on IPv6-broken networks.
-  const isNeon = (() => {
-    try { const h = new URL(connStr).hostname; return h.endsWith('.neon.tech') || h.includes('.neon.'); }
-    catch { return false; }
-  })();
-
-  let prisma: PrismaClient;
-  if (isNeon) {
-    // Prefer IPv4 — prevents WebSocket/DNS timeout on networks where IPv6 can't reach Neon
-    const { setDefaultResultOrder } = await import('dns');
-    setDefaultResultOrder('ipv4first');
-
-    // @neondatabase/serverless doesn't auto-detect Node.js 22's native WebSocket
-    // — must set webSocketConstructor explicitly before creating the Pool.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { neonConfig } = require('@neondatabase/serverless');
-    neonConfig.webSocketConstructor = globalThis.WebSocket;
-
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PrismaNeon } = require('@prisma/adapter-neon');
-    const adapter = new PrismaNeon({ connectionString: connStr });
-    prisma = new PrismaClient({ adapter } as never);
-  } else {
-    const adapter = new PrismaPg({ connectionString: connStr, max: 3 });
-    prisma = new PrismaClient({ adapter } as never);
-  }
+  // Production uses Railway Postgres with the standard PrismaPg adapter.
+  const adapter = new PrismaPg({ connectionString: connStr, max: 3 });
+  const prisma = new PrismaClient({ adapter } as never);
 
   const endDate = getLastWeekday();
   const newFundStart = new Date(endDate);

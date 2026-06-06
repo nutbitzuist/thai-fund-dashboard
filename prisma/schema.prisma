@@ -1,5 +1,5 @@
 // Prisma Schema for Thai Mutual Fund Research Dashboard
-// Database: PostgreSQL (Neon via Vercel Marketplace)
+// Database: PostgreSQL (Railway Postgres)
 
 generator client {
   provider = "prisma-client-js"

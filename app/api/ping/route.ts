@@ -3,7 +3,7 @@
 // Point your monitor at GET /api/ping. Returns 200 when DB is reachable, 503 when not.
 // Response time is fast (<300 ms) because it only runs SELECT 1, not data queries.
 //
-// Pinging every 5 minutes also keeps Neon's compute from going fully cold.
+// Pinging every 5 minutes verifies the Vercel app and Railway Postgres connection stay responsive.
 
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';

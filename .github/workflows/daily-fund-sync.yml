@@ -5,6 +5,7 @@ name: Daily Fund Data Sync
 on:
   schedule:
     - cron: '45 11 * * 1-5' # 18:45 Bangkok, weekdays
+    - cron: '30 2 * * 6'    # 09:30 Bangkok Saturday catch-up for Friday NAVs
   workflow_dispatch:
   repository_dispatch:
     types: [daily-sync]

@@ -71,7 +71,7 @@ export default function AboutPage() {
               {[
                 ['Frontend', 'Next.js 15, TypeScript, Tailwind CSS'],
                 ['Charts', 'Recharts'],
-                ['Database', 'PostgreSQL (Neon)'],
+                ['Database', 'Railway Postgres'],
                 ['ORM', 'Prisma'],
                 ['Hosting', 'Vercel Hobby Plan'],
                 ['Data', 'SEC Open API Thailand'],

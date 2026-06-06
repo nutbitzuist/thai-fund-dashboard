@@ -21,7 +21,7 @@
 - **Framework:** Next.js 15/16 App Router + TypeScript
 - **Styling:** Tailwind CSS v4
 - **Charts:** Recharts
-- **Database:** PostgreSQL (Neon via Vercel Marketplace)
+- **Database:** Railway Postgres
 - **ORM:** Prisma 7 + `@prisma/adapter-pg`
 - **Validation:** Zod
 - **Deployment:** Vercel Hobby Plan
@@ -33,7 +33,7 @@
 ### Prerequisites
 
 1. Node.js 22+
-2. Neon PostgreSQL account (free tier) — or any PostgreSQL
+2. Railway Postgres database
 3. SEC Open API keys ([register here](https://developer.sec.or.th))
 
 ### Installation
@@ -71,7 +71,7 @@ npm run dev
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | ✅ | Neon PostgreSQL connection string |
+| `DATABASE_URL` | ✅ | Railway Postgres connection string |
 | `DIRECT_URL` | optional | Direct (non-pooled) URL for migrations |
 | `SEC_API_KEY` | ✅ | SEC Factsheet API subscription key |
 | `SEC_NAV_API_KEY` | ✅ | SEC NAV API subscription key |
@@ -97,10 +97,10 @@ npm run dev
    - Import your GitHub repo
    - Vercel auto-detects Next.js
 
-3. **Add Neon PostgreSQL**
-   - Vercel Dashboard → Storage → Add → Neon
-   - Free tier is sufficient for starter use
-   - Neon will auto-populate `DATABASE_URL` in Vercel env vars
+3. **Connect Railway Postgres**
+   - Railway Dashboard → Postgres service → Connect → copy `DATABASE_URL`
+   - Add the Railway `DATABASE_URL` to Vercel production env vars and GitHub Actions secrets
+   - Production source of truth is Railway Postgres
 
 4. **Set Environment Variables** in Vercel Dashboard:
    ```
@@ -228,7 +228,7 @@ Risk-free rate: 1.5% per year (configurable via `RISK_FREE_RATE` env var)
 1. **SEC API rate limits** — NAV sync is batched with delays; initial sync for many funds takes time
 2. **One date at a time** — DailyInfo API doesn't support date ranges
 3. **Holiday handling** — System only fetches weekdays; Thai public holidays still return no data from API
-4. **Free tier limits** — Vercel Hobby plan cron runs limited to 2 per day; Neon free tier has storage limits
+4. **Free tier limits** — Vercel Hobby plan cron runs limited to 2 per day; Railway Postgres storage/compute limits
 5. **Class matching** — `proj_abbr_name` ≠ `class_abbr_name`; default class uses "-A" suffix rule
 
 ## Future Roadmap

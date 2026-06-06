@@ -74,19 +74,34 @@ async function getTopRankings(): Promise<{ data1Y: RankEntry[]; dataYTD: RankEnt
       returnPct: r.returnPct != null ? Number(r.returnPct) : null,
     }))
 
+  const latestTop = async (period: string): Promise<MetricRow[]> => {
+    // Metric rows are append-only by endDate. Use only the latest row per fund
+    // class before sorting, otherwise stale high-return rows can stay pinned on
+    // the homepage after the database has newer NAV/metric data.
+    const rows = await prisma.fundMetric.findMany({
+      where: metricWhere(period),
+      distinct: ['fundClassId'],
+      orderBy: [{ fundClassId: 'asc' }, { endDate: 'desc' }, { calculatedAt: 'desc' }],
+      select: metricSelect,
+    })
+    return (rows as MetricRow[])
+      .sort((a, b) => Number(b.returnPct ?? Number.NEGATIVE_INFINITY) - Number(a.returnPct ?? Number.NEGATIVE_INFINITY))
+      .slice(0, 10)
+  }
+
   try {
     const [rows1Y, rowsYTD, rows3M, rows1M] = await Promise.all([
-      prisma.fundMetric.findMany({ where: metricWhere('1Y'),  orderBy: { returnPct: 'desc' }, take: 10, select: metricSelect }),
-      prisma.fundMetric.findMany({ where: metricWhere('YTD'), orderBy: { returnPct: 'desc' }, take: 10, select: metricSelect }),
-      prisma.fundMetric.findMany({ where: metricWhere('3M'),  orderBy: { returnPct: 'desc' }, take: 10, select: metricSelect }),
-      prisma.fundMetric.findMany({ where: metricWhere('1M'),  orderBy: { returnPct: 'desc' }, take: 10, select: metricSelect }),
+      latestTop('1Y'),
+      latestTop('YTD'),
+      latestTop('3M'),
+      latestTop('1M'),
     ])
 
     return {
-      data1Y:  toEntries(rows1Y  as MetricRow[]),
-      dataYTD: toEntries(rowsYTD as MetricRow[]),
-      data3M:  toEntries(rows3M  as MetricRow[]),
-      data1M:  toEntries(rows1M  as MetricRow[]),
+      data1Y:  toEntries(rows1Y),
+      dataYTD: toEntries(rowsYTD),
+      data3M:  toEntries(rows3M),
+      data1M:  toEntries(rows1M),
     }
   } catch {
     return { data1Y: [], dataYTD: [], data3M: [], data1M: [] }

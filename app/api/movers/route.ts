@@ -1,5 +1,5 @@
 // app/api/movers/route.ts
-// GET /api/movers?fundType=&limit=10
+// GET /api/movers?fundType=&riskLevel=&amcIds=&sort=desc&page=1&limit=25
 // Returns today's biggest gainers and losers based on daily NAV change
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,7 +14,10 @@ export const dynamic = 'force-dynamic';
 
 const MoversSchema = z.object({
   fundType: z.string().max(50).optional(),
+  riskLevel: z.coerce.number().int().min(1).max(8).optional(),
   amcIds: z.string().optional(), // comma-separated AMC IDs
+  sort: z.enum(['asc', 'desc']).default('desc'),
+  page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 
@@ -40,7 +43,8 @@ export async function GET(req: NextRequest) {
   const parsed = MoversSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid params' }, { status: 400 });
 
-  const { fundType, amcIds: amcIdsStr, limit } = parsed.data;
+  const { fundType, riskLevel, amcIds: amcIdsStr, sort, page, limit } = parsed.data;
+  const skip = (page - 1) * limit;
   const amcIdList = amcIdsStr
     ? amcIdsStr.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0)
     : [];
@@ -58,6 +62,7 @@ export async function GET(req: NextRequest) {
     const fundWhere: Record<string, unknown> = {
       fundStatus: { in: ['RG', 'SE'] },
       ...(fundType && { fundType }),
+      ...(riskLevel && { riskLevel }),
     };
     if (amcIdList.length === 1) fundWhere.amcId = amcIdList[0];
     else if (amcIdList.length > 1) fundWhere.amcId = { in: amcIdList };
@@ -120,10 +125,14 @@ export async function GET(req: NextRequest) {
       })
       .filter((m) => m.returnPct != null);
 
-    // Sort and slice gainers / losers
+    // Sort and slice gainers / losers. Keep ranks global within each side so
+    // page 2 continues as 26, 27, ... instead of restarting at 1.
     const sorted = [...movers].sort((a, b) => (b.returnPct ?? 0) - (a.returnPct ?? 0));
-    const gainers = sorted.filter((m) => (m.returnPct ?? 0) > 0).slice(0, limit).map((m, i) => ({ rank: i + 1, ...m }));
-    const losers = sorted.filter((m) => (m.returnPct ?? 0) < 0).slice(-limit).reverse().map((m, i) => ({ rank: i + 1, ...m }));
+    const allGainers = sorted.filter((m) => (m.returnPct ?? 0) > 0);
+    const allLosers = sorted.filter((m) => (m.returnPct ?? 0) < 0).reverse();
+    const gainers = allGainers.slice(skip, skip + limit).map((m, i) => ({ rank: skip + i + 1, ...m }));
+    const losers = allLosers.slice(skip, skip + limit).map((m, i) => ({ rank: skip + i + 1, ...m }));
+    const selectedTotal = sort === 'desc' ? allGainers.length : allLosers.length;
 
     return NextResponse.json(
       {
@@ -132,6 +141,14 @@ export async function GET(req: NextRequest) {
         date: latestDate.toISOString().split('T')[0],
         prevDate: prevDate.toISOString().split('T')[0],
         totalFunds: movers.length,
+        pagination: {
+          page,
+          limit,
+          total: selectedTotal,
+          totalPages: Math.ceil(selectedTotal / limit),
+          totalGainers: allGainers.length,
+          totalLosers: allLosers.length,
+        },
       },
       { headers: publicCacheHeaders() },
     );

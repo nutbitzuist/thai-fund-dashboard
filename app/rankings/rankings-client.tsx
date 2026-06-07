@@ -374,19 +374,20 @@ export function RankingsClient() {
     setLoading(true)
     try {
       if (metric === 'return1D') {
-        const params = new URLSearchParams({ limit: '25' })
+        const params = new URLSearchParams({ sort: sortDir, page: String(page), limit: '25' })
         if (fundType) params.set('fundType', fundType)
+        if (riskLevel) params.set('riskLevel', riskLevel)
         if (amcIds.length > 0) params.set('amcIds', amcIds.join(','))
         const res = await fetch(`/api/movers?${params}`)
         const json = await res.json()
         const movers: MoverRow[] = sortDir === 'desc' ? (json.gainers ?? []) : (json.losers ?? [])
         setData(movers.map((m, i) => ({
-          rank: i + 1, projId: m.projId, projAbbrName: m.projAbbrName, nameTh: m.nameTh,
+          rank: m.rank ?? i + 1, projId: m.projId, projAbbrName: m.projAbbrName, nameTh: m.nameTh,
           fundType: m.fundType, riskLevel: m.riskLevel, amc: m.amc, returnPct: m.returnPct,
           annualizedVolatilityPct: null, maxDrawdownPct: null, sharpeRatio: null,
           navCount: null, endDate: json.date ?? '',
         })))
-        setPagination({ total: movers.length, totalPages: 1, page: 1 })
+        setPagination(json.pagination ?? { total: movers.length, totalPages: 1, page })
       } else {
         const params = new URLSearchParams({ metric, sort: sortDir, page: String(page), limit: '25' })
         if (fundType) params.set('fundType', fundType)
@@ -802,7 +803,7 @@ export function RankingsClient() {
           </div>
 
           {/* Pagination */}
-          {pagination.totalPages > 1 && metric !== 'return1D' && (
+          {pagination.totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 py-2">
               <Button variant="outline" size="sm" onClick={() => changePage(Math.max(1, page - 1))} disabled={page === 1}>
                 <ChevronLeft className="h-4 w-4" />

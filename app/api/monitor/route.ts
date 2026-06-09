@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { appBaseUrl } from '@/lib/utils';
 import { assessProductionMonitor, formatMonitorAlert } from '@/lib/production-monitor';
+import { assessDataQuality, formatQualityAlert } from '@/lib/data-quality';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,15 +71,27 @@ export async function GET(req: NextRequest) {
     // Test 1: raw DB connectivity
     await prisma.$queryRaw`SELECT 1`;
 
-    // Test 2: data freshness and critical counts
-    const [latestNav, activeFunds, totalNavRecords] = await Promise.all([
+    // Test 2: data freshness, critical counts, and display completeness
+    const fiveDaysAgo = new Date(Date.now() - 5 * 86_400_000);
+    const [latestNav, activeFunds, totalNavRecords, fundsWithAnyNav, fundsWithRecentNav, fundsWithAnyMetric, fundsWithNoDefaultClass] = await Promise.all([
       prisma.navPrice.findFirst({
         orderBy: { navDate: 'desc' },
         select: { navDate: true },
       }),
       prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] } } }),
       prisma.navPrice.count(),
+      prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] }, navPrices: { some: {} } } }),
+      prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] }, navPrices: { some: { navDate: { gte: fiveDaysAgo } } } } }),
+      prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] }, fundMetrics: { some: {} } } }),
+      prisma.fund.count({ where: { fundStatus: { in: ['RG', 'SE'] }, fundClasses: { none: { isDefault: true } } } }),
     ]);
+    const [return1YRow] = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(DISTINCT fm."fundId")::int AS count
+      FROM fund_metric fm
+      JOIN fund_class fc ON fc.id = fm."fundClassId" AND fc."isDefault" = TRUE
+      JOIN fund f ON f.id = fm."fundId" AND f."fundStatus" IN ('RG', 'SE')
+      WHERE fm.period = '1Y' AND fm."returnPct" IS NOT NULL
+    `;
     const daysSince = latestNav
       ? Math.floor((Date.now() - new Date(latestNav.navDate).getTime()) / 86400000)
       : 999;
@@ -110,20 +123,39 @@ export async function GET(req: NextRequest) {
     };
     const assessment = assessProductionMonitor(monitorInput);
 
-    if (assessment.alertNeeded) {
-      await sendTelegram(formatMonitorAlert(monitorInput, assessment));
-    }
+    const qualityInput = {
+      activeFunds,
+      fundsWithAnyNav,
+      fundsWithRecentNav,
+      fundsWithAnyMetric,
+      fundsWithReturn1Y: return1YRow?.count ?? 0,
+      fundsWithReturn3M: 0, // not queried here — expensive; the daily sync check covers it
+      fundsWithNoDefaultClass,
+    };
+    const qualityAssessment = assessDataQuality(qualityInput);
+
+    const alerts: Promise<void>[] = [];
+    if (assessment.alertNeeded) alerts.push(sendTelegram(formatMonitorAlert(monitorInput, assessment)));
+    if (qualityAssessment.alertNeeded) alerts.push(sendTelegram(formatQualityAlert(qualityInput, qualityAssessment)));
+    await Promise.all(alerts);
+
+    const worstSeverity = assessment.severity === 'critical' || qualityAssessment.severity === 'critical'
+      ? 'critical'
+      : assessment.severity === 'warning' || qualityAssessment.severity === 'warning'
+        ? 'warning'
+        : 'ok';
 
     return NextResponse.json(
       {
-        ok: assessment.severity !== 'critical',
-        severity: assessment.severity,
-        messages: assessment.messages,
+        ok: worstSeverity !== 'critical',
+        severity: worstSeverity,
+        infrastructure: assessment,
+        dataQuality: { ...qualityAssessment, ...qualityInput },
         latencyMs: Date.now() - t0,
         lastNavDate: latestNav?.navDate?.toISOString().split('T')[0] ?? null,
         ...monitorInput,
       },
-      { status: assessment.severity === 'critical' ? 503 : 200, headers: { 'Cache-Control': 'no-store' } },
+      { status: worstSeverity === 'critical' ? 503 : 200, headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (err) {
     // DB is down — alert + auto-recover

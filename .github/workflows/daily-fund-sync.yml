@@ -43,6 +43,30 @@ jobs:
           NODE_ENV: production
         run: npx tsx scripts/audit-data-health.ts --fail-on-stale --json
 
+      - name: Check data completeness
+        id: quality
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NODE_ENV: production
+        run: npx tsx scripts/check-data-quality.ts
+        # Exit 1 means auto-repair needed — don't fail the whole workflow yet
+        continue-on-error: true
+
+      - name: Auto-repair metrics if coverage is critically low
+        if: steps.quality.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_DISPATCH_TOKEN }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/metric-repair.yml/dispatches" \
+            -d '{"ref":"main"}'
+          echo "metric-repair workflow triggered"
+
       - name: Alert on workflow failure
         if: failure()
         run: |

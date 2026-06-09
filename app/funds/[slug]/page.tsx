@@ -545,7 +545,7 @@ export default async function FundDetailPage({ params }: Props) {
               <div key={period} className={cn(!sufficient && m && 'opacity-50')}>
                 <MetricCard
                   label={periodLabel}
-                  value={sufficient && m?.returnPct != null ? Number(m.returnPct) : null}
+                  value={m?.returnPct != null ? Number(m.returnPct) : null}
                   type="percent"
                   description={
                     !sufficient && m
@@ -668,8 +668,8 @@ export default async function FundDetailPage({ params }: Props) {
                             <span className="ml-1.5 text-xs text-amber-600 font-normal">*</span>
                           )}
                         </td>
-                        <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(sufficient && m?.returnPct != null ? Number(m.returnPct) : null))}>
-                          {sufficient && m?.returnPct != null ? formatPct(Number(m.returnPct)) : '-'}
+                        <td className={cn('py-3 text-right text-sm font-semibold tabular-nums', getReturnColorClass(m?.returnPct != null ? Number(m.returnPct) : null))}>
+                          {m?.returnPct != null ? formatPct(Number(m.returnPct)) : '-'}
                         </td>
                         {showBenchmarkColumn && (
                           <td className={cn('py-3 text-right text-sm tabular-nums hidden md:table-cell', getReturnColorClass(sufficient && m?.secBenchmarkReturnPct != null ? Number(m.secBenchmarkReturnPct) : null))}>

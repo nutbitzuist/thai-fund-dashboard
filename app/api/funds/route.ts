@@ -116,10 +116,10 @@ function buildFundDto(
       ? ((Number(latestNav.lastVal) - Number(prevNav.lastVal)) / Number(prevNav.lastVal)) * 100
       : null;
 
-  // Only expose metrics that have sufficient NAV history — never show returns
-  // calculated from too few data points.
-  const ok1Y = (m1Y?.navCount != null) && (Number(m1Y.navCount) >= PERIOD_MIN_NAV_COUNT['1Y']);
-  const ok3Y = (m3Y?.navCount != null) && (Number(m3Y.navCount) >= PERIOD_MIN_NAV_COUNT['3Y']);
+  // returnPct is stored whenever ≥2 NAV points exist — always show it.
+  // Risk metrics (volatility, drawdown, Sharpe) require dense daily data.
+  const okRisk1Y = (m1Y?.navCount != null) && (Number(m1Y.navCount) >= PERIOD_MIN_NAV_COUNT['1Y']);
+  const okRisk3Y = (m3Y?.navCount != null) && (Number(m3Y.navCount) >= PERIOD_MIN_NAV_COUNT['3Y']);
 
   return {
     id: f.id,
@@ -135,11 +135,11 @@ function buildFundDto(
     latestNav: latestNav ? Number(latestNav.lastVal) : null,
     latestNavDate: latestNav ? (latestNav.navDate as Date).toISOString().split('T')[0] : null,
     dailyChangePct,
-    return1Y: ok1Y && m1Y?.returnPct != null ? Number(m1Y.returnPct) : null,
-    return3Y: ok3Y && m3Y?.returnPct != null ? Number(m3Y.returnPct) : null,
-    volatility1Y: ok1Y && m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
-    maxDrawdown1Y: ok1Y && m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
-    sharpe1Y: ok1Y && m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
+    return1Y: m1Y?.returnPct != null ? Number(m1Y.returnPct) : null,
+    return3Y: m3Y?.returnPct != null ? Number(m3Y.returnPct) : null,
+    volatility1Y: okRisk1Y && m1Y?.annualizedVolatilityPct != null ? Number(m1Y.annualizedVolatilityPct) : null,
+    maxDrawdown1Y: okRisk1Y && m1Y?.maxDrawdownPct != null ? Number(m1Y.maxDrawdownPct) : null,
+    sharpe1Y: okRisk1Y && m1Y?.sharpeRatio != null ? Number(m1Y.sharpeRatio) : null,
   };
 }
 
@@ -208,8 +208,10 @@ export async function GET(req: NextRequest) {
         if (!latestByClass.has(row.fundClassId)) latestByClass.set(row.fundClassId, row);
       }
 
+      const isReturnSort = sortBy === 'return1Y' || sortBy === 'return3Y';
+      const minSortCount = isReturnSort ? 2 : (PERIOD_MIN_NAV_COUNT[period] ?? 0);
       const sortedRows = Array.from(latestByClass.values())
-        .filter((row) => Number(row.navCount ?? 0) >= (PERIOD_MIN_NAV_COUNT[period] ?? 0))
+        .filter((row) => Number(row.navCount ?? 0) >= minSortCount)
         .sort((a, b) => {
           const aValue = Number(a[field as keyof MetricRow] ?? Number.NEGATIVE_INFINITY);
           const bValue = Number(b[field as keyof MetricRow] ?? Number.NEGATIVE_INFINITY);

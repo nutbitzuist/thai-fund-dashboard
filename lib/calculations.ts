@@ -154,9 +154,8 @@ export function calcMetrics(
     (p) => p.date >= startDate && p.date <= endDate
   );
 
-  const minNavCount = PERIOD_MIN_NAV_COUNT[period] ?? 2;
-
-  if (inRange.length < minNavCount) {
+  // Need at least 2 points for any calculation
+  if (inRange.length < 2) {
     return {
       period,
       startDate,
@@ -171,15 +170,17 @@ export function calcMetrics(
 
   const navStart = inRange[0].nav;
   const navEnd = inRange[inRange.length - 1].nav;
-
   const returnPct = calcPeriodReturn(navStart, navEnd);
-  const dailyReturns = calcDailyReturns(inRange);
-  const annualizedVolatilityPct = calcAnnualizedVolatility(dailyReturns);
-  const maxDrawdownPct = calcMaxDrawdown(inRange);
 
-  // Sharpe uses 1Y return or approximate annualized return for other periods
+  // Risk metrics (volatility, drawdown, Sharpe) need dense data for statistical
+  // stability. Weekly/monthly funds have returnPct but null risk metrics.
+  const minRiskCount = PERIOD_MIN_NAV_COUNT[period] ?? 2;
+  const hasRiskData = inRange.length >= minRiskCount;
+  const dailyReturns = hasRiskData ? calcDailyReturns(inRange) : [];
+  const annualizedVolatilityPct = hasRiskData ? calcAnnualizedVolatility(dailyReturns) : null;
+  const maxDrawdownPct = hasRiskData ? calcMaxDrawdown(inRange) : null;
   const sharpeRatio =
-    annualizedVolatilityPct != null
+    hasRiskData && annualizedVolatilityPct != null
       ? calcSharpeRatio(returnPct, annualizedVolatilityPct)
       : null;
 

@@ -1,0 +1,70 @@
+name: Historical NAV Backfill
+
+# Fetches full NAV history from SEC API for funds that are new or missing history.
+# Designed to run overnight — 2300+ funds at 200ms/date takes several hours.
+#
+# Parameters (all optional via workflow_dispatch inputs):
+#   days         — history window for new funds (default: 1825 = 5 years)
+#   top_up_days  — top-up window for partial funds (default: 400)
+#   concurrency  — parallel funds (default: 8 — safe for SEC API)
+#   new_only     — only process funds with zero NAV data
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Days of history for new funds'
+        default: '1825'
+      top_up_days:
+        description: 'Top-up window for partial funds'
+        default: '400'
+      concurrency:
+        description: 'Parallel funds'
+        default: '8'
+      new_only:
+        description: 'Only new funds (true/false)'
+        default: 'false'
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360   # 6 hours max
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run NAV backfill
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEC_NAV_API_KEY: ${{ secrets.SEC_NAV_API_KEY }}
+          NODE_ENV: production
+        run: |
+          ARGS="--days=${{ github.event.inputs.days }} \
+                --top-up-days=${{ github.event.inputs.top_up_days }} \
+                --concurrency=${{ github.event.inputs.concurrency }}"
+          if [ "${{ github.event.inputs.new_only }}" = "true" ]; then
+            ARGS="$ARGS --new-only"
+          fi
+          npx tsx scripts/backfill-navs.ts $ARGS
+
+      - name: Run data quality check after backfill
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NODE_ENV: production
+        run: npx tsx scripts/check-data-quality.ts
+
+      - name: Alert on workflow failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${{ secrets.TELEGRAM_CHAT_ID }}\",\"text\":\"🚨 <b>Thai Fund Dashboard</b> — NAV Backfill FAILED\\nRun: ${{ github.run_id }}\",\"parse_mode\":\"HTML\"}"

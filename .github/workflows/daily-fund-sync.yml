@@ -57,15 +57,20 @@ jobs:
       - name: Auto-repair metrics if coverage is critically low
         if: steps.quality.outcome == 'failure'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_DISPATCH_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NODE_ENV: production
         run: |
-          curl -s -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/metric-repair.yml/dispatches" \
-            -d '{"ref":"main"}'
-          echo "metric-repair workflow triggered"
+          echo "Data quality check requested auto-repair; recalculating metrics in this run"
+          npx tsx scripts/recalculate-metrics.ts
+
+      - name: Re-check data completeness after auto-repair
+        if: steps.quality.outcome == 'failure'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NODE_ENV: production
+        run: npx tsx scripts/check-data-quality.ts
 
       - name: Alert on workflow failure
         if: failure()

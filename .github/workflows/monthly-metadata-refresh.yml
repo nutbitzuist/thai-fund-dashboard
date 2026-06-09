@@ -1,0 +1,47 @@
+name: Monthly Metadata Refresh
+
+# Refreshes slowly-changing SEC data that doesn't need daily updates:
+#   - Dividend policy (Y/N per fund class)
+#   - SEC benchmark/peer performance stats
+# Runs on the 1st of each month + supports manual dispatch.
+on:
+  schedule:
+    - cron: '0 3 1 * *'   # 03:00 UTC on the 1st = 10:00 Bangkok
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Refresh dividend policy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEC_API_KEY: ${{ secrets.SEC_API_KEY }}
+          NODE_ENV: production
+        run: npx tsx scripts/backfill-dividend-policy.ts
+
+      - name: Refresh SEC benchmark and peer performance
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEC_API_KEY: ${{ secrets.SEC_API_KEY }}
+          NODE_ENV: production
+        run: npx tsx scripts/backfill-sec-performance.ts
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${{ secrets.TELEGRAM_CHAT_ID }}\",\"text\":\"⚠️ <b>Thai Fund Dashboard</b> — Monthly metadata refresh FAILED\\nRun: ${{ github.run_id }}\",\"parse_mode\":\"HTML\"}"

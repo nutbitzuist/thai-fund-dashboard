@@ -7,15 +7,53 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 if (process.env.DATABASE_URL) process.env.DATABASE_URL = process.env.DATABASE_URL.replace(/\\n$/, '').trim();
 
+async function sendTelegram(text: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+  } catch { /* non-critical */ }
+}
+
 async function main() {
   const { default: prisma } = await import('@/lib/db');
   const { runDailySync } = await import('@/lib/sync');
-  const result = await runDailySync();
+
+  let result;
+  try {
+    result = await runDailySync();
+  } catch (err) {
+    await sendTelegram(
+      `❌ <b>Thai Fund Dashboard — Sync FAILED</b>\n` +
+      `Error: ${String(err)}\n` +
+      `เวลา: ${new Date().toISOString()}`
+    );
+    console.error('[daily-sync] Failed:', err);
+    process.exitCode = 1;
+    await prisma.$disconnect();
+    return;
+  }
+
   console.log(JSON.stringify({
     success: result.errors.length === 0,
     ...result,
     timestamp: new Date().toISOString(),
   }, null, 2));
+
+  const icon = result.errors.length === 0 ? '✅' : '⚠️';
+  const lines = [
+    `${icon} <b>Thai Fund Dashboard — Daily Sync</b>`,
+    `NAV: +${result.navInserted} | Metrics: +${result.metricsCalculated}`,
+    result.lastNavDate ? `ข้อมูล NAV ล่าสุด: ${result.lastNavDate}` : null,
+    `ใช้เวลา: ${(result.durationMs / 1000).toFixed(0)}s`,
+    result.errors.length ? `\nErrors:\n${result.errors.map((e) => `• ${e}`).join('\n')}` : null,
+  ].filter(Boolean);
+  await sendTelegram(lines.join('\n'));
 
   await prisma.$disconnect();
 
@@ -24,7 +62,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('[daily-sync] Failed:', err);
+main().catch(async (err) => {
+  await sendTelegram(
+    `❌ <b>Thai Fund Dashboard — Sync crashed</b>\n${String(err)}`
+  );
+  console.error('[daily-sync] Unhandled crash:', err);
   process.exitCode = 1;
 });

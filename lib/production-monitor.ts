@@ -17,7 +17,7 @@ export interface ProductionMonitorAssessment {
   messages: string[];
 }
 
-const MAX_STALE_DAYS = 4;
+const MAX_STALE_DAYS = 3;
 const MIN_ACTIVE_FUNDS = 2000;
 const MIN_NAV_RECORDS = 900_000;
 const MIN_SITEMAP_URLS = 2000;

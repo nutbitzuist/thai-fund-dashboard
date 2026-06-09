@@ -450,6 +450,7 @@ export interface SyncResult {
   metricsCalculated: number;
   durationMs: number;
   errors: string[];
+  lastNavDate: string | null;
 }
 
 // ── Webhook Alert ────────────────────────────
@@ -543,6 +544,15 @@ export async function runDailySync(): Promise<SyncResult> {
     const durationMs = Date.now() - startTime;
     const syncStatus = errors.length === 0 ? 'SUCCESS' : 'PARTIAL';
 
+    // Capture the latest NAV date now (after all inserts) for reporting
+    const latestNavRecord = await prisma.navPrice.findFirst({
+      orderBy: { navDate: 'desc' },
+      select: { navDate: true },
+    });
+    const lastNavDate = latestNavRecord
+      ? new Date(latestNavRecord.navDate).toISOString().split('T')[0]
+      : null;
+
     await prisma.syncLog.update({
       where: { id: syncLog.id },
       data: {
@@ -561,12 +571,13 @@ export async function runDailySync(): Promise<SyncResult> {
           `Status: ${syncStatus}`,
           `Duration: ${(durationMs / 1000).toFixed(1)}s`,
           `AMCs: ${amcsSynced} | Funds: ${fundsSynced} | NAV: ${navInserted} | Metrics: ${metricsCalculated}`,
+          `Last NAV date: ${lastNavDate ?? 'unknown'}`,
           `Errors:\n${errors.map((e) => `• ${e}`).join('\n')}`,
         ].join('\n')
       );
     }
 
-    return { amcsSynced, fundsSynced, navInserted, metricsCalculated, durationMs, errors };
+    return { amcsSynced, fundsSynced, navInserted, metricsCalculated, durationMs, errors, lastNavDate };
   } catch (e) {
     const durationMs = Date.now() - startTime;
     await prisma.syncLog.update({

@@ -42,3 +42,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NODE_ENV: production
         run: npx tsx scripts/audit-data-health.ts --fail-on-stale --json
+
+      - name: Alert on workflow failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${{ secrets.TELEGRAM_CHAT_ID }}\",\"text\":\"🚨 <b>Thai Fund Dashboard</b> — Daily sync workflow FAILED\\nRun: ${{ github.run_id }}\\nBranch: ${{ github.ref_name }}\\nเวลา: $(date -u '+%Y-%m-%d %H:%M UTC')\",\"parse_mode\":\"HTML\"}"

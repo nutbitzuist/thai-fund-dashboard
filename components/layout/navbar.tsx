@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, Menu, X, Heart, ChevronDown, UserCheck, Wrench } from 'lucide-react'
+import { Menu, X, Heart, ChevronDown, UserCheck, Wrench } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,17 @@ const toolLinks = [
   { href: '/tools/twin',             label: 'กองทุนฝาแฝด' },
 ]
 
+// Custom 3-bar ascending chart mark — distinctive brand identity
+function ChartMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
+      <rect x="1"    y="12" width="4.5" height="7"  rx="1.5" />
+      <rect x="7.75" y="7"  width="4.5" height="12" rx="1.5" />
+      <rect x="14.5" y="2"  width="4.5" height="17" rx="1.5" />
+    </svg>
+  )
+}
+
 export function Navbar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -32,7 +43,6 @@ export function Navbar() {
 
   const isToolsActive = pathname?.startsWith('/screener') || pathname?.startsWith('/tools/')
 
-  // Close tools dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) {
@@ -48,9 +58,10 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 font-bold text-blue-700">
-          <TrendingUp className="h-6 w-6" />
+          <ChartMark className="h-5 w-5" />
           <span className="text-lg">กองทุนไทย</span>
           <span className="hidden text-sm font-normal text-slate-400 sm:inline">Research Dashboard</span>
         </Link>
@@ -149,7 +160,6 @@ export function Navbar() {
               </Link>
             ))}
 
-            {/* Tools section */}
             <div className="mt-2 mb-1 px-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">
               เครื่องมือ
             </div>

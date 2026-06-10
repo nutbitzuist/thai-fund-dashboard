@@ -16,6 +16,20 @@ export const dynamic = 'force-dynamic';
 const STALE_THRESHOLD_DAYS = 4;
 
 export async function GET() {
+  // Missing env is a deploy/config problem, not a data problem — report it
+  // explicitly instead of surfacing a generic query error.
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json(
+      {
+        healthy: false,
+        status: 'degraded',
+        reason: 'DATABASE_URL is not set',
+        checkedAt: new Date().toISOString(),
+      },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } }
+    );
+  }
+
   try {
     const [lastSync, lastNav, fundCount, navCount] = await Promise.all([
       prisma.syncLog.findFirst({

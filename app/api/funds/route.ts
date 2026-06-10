@@ -119,7 +119,6 @@ function buildFundDto(
   // returnPct is stored whenever ≥2 NAV points exist — always show it.
   // Risk metrics (volatility, drawdown, Sharpe) require dense daily data.
   const okRisk1Y = (m1Y?.navCount != null) && (Number(m1Y.navCount) >= PERIOD_MIN_NAV_COUNT['1Y']);
-  const okRisk3Y = (m3Y?.navCount != null) && (Number(m3Y.navCount) >= PERIOD_MIN_NAV_COUNT['3Y']);
 
   return {
     id: f.id,

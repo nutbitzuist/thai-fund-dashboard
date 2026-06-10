@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
+import type { Prisma } from '@prisma/client';
 import prisma from '@/lib/db';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,23 @@ import { formatPct, fundUrl, getReturnColorClass } from '@/lib/utils';
 interface Props {
   params: Promise<{ slug: string }>;
 }
+
+type InsightMetricRow = Prisma.FundMetricGetPayload<{
+  include: {
+    fund: {
+      select: {
+        projId: true;
+        projAbbrName: true;
+        nameTh: true;
+        fundType: true;
+        riskLevel: true;
+        regisDate: true;
+        totalExpenseRatio: true;
+        amc: { select: { nameTh: true } };
+      };
+    };
+  };
+}>;
 
 export const revalidate = 21600;
 
@@ -40,49 +58,68 @@ function metricField(metric: string) {
   return 'returnPct';
 }
 
+function isMissingDatabaseError(error: unknown) {
+  return error instanceof Error && /DATABASE_URL is not set/i.test(error.message);
+}
+
 export default async function InsightLandingPage({ params }: Props) {
   const { slug } = await params;
   const page = getSeoLandingPage(slug);
   if (!page) notFound();
 
   const field = metricField(page.metric);
-  const rows = await prisma.fundMetric.findMany({
-    where: {
-      period: '1Y',
-      [field]: { not: null },
-      navCount: { gte: 230 },
-      fundClass: { isDefault: true },
-      fund: {
-        fundStatus: { in: ['RG', 'SE'] },
-        ...(page.fundType ? { fundType: page.fundType } : {}),
-        ...(page.amcQuery ? {
-          amc: {
-            OR: [
-              { nameTh: { contains: page.amcQuery, mode: 'insensitive' as const } },
-              { nameEn: { contains: page.amcQuery, mode: 'insensitive' as const } },
-              { slug: { contains: page.amcQuery.toLowerCase(), mode: 'insensitive' as const } },
-            ],
-          },
-        } : {}),
-      },
-    },
-    orderBy: { [field]: page.sort },
-    take: 12,
-    include: {
-      fund: {
-        select: {
-          projId: true,
-          projAbbrName: true,
-          nameTh: true,
-          fundType: true,
-          riskLevel: true,
-          regisDate: true,
-          totalExpenseRatio: true,
-          amc: { select: { nameTh: true } },
+  let rows: InsightMetricRow[];
+  try {
+    rows = await prisma.fundMetric.findMany({
+      where: {
+        period: '1Y',
+        [field]: { not: null },
+        navCount: { gte: 230 },
+        fundClass: { isDefault: true },
+        fund: {
+          fundStatus: { in: ['RG', 'SE'] },
+          ...(page.fundType ? { fundType: page.fundType } : {}),
+          ...(page.amcQuery ? {
+            amc: {
+              OR: [
+                { nameTh: { contains: page.amcQuery, mode: 'insensitive' as const } },
+                { nameEn: { contains: page.amcQuery, mode: 'insensitive' as const } },
+                { slug: { contains: page.amcQuery.toLowerCase(), mode: 'insensitive' as const } },
+              ],
+            },
+          } : {}),
         },
       },
-    },
-  });
+      orderBy: { [field]: page.sort },
+      take: 12,
+      include: {
+        fund: {
+          select: {
+            projId: true,
+            projAbbrName: true,
+            nameTh: true,
+            fundType: true,
+            riskLevel: true,
+            regisDate: true,
+            totalExpenseRatio: true,
+            amc: { select: { nameTh: true } },
+          },
+        },
+      },
+    }) as unknown as InsightMetricRow[];
+  } catch (error) {
+    if (!isMissingDatabaseError(error)) throw error;
+
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8 space-y-6">
+        <Badge className="bg-amber-600 text-white">Data unavailable</Badge>
+        <h1 className="text-3xl font-bold text-slate-900">{page.h1}</h1>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
+          หน้านี้ต้องใช้ฐานข้อมูลกองทุนสด แต่ environment นี้ยังไม่ได้ตั้งค่า <code>DATABASE_URL</code> จึงแสดงสถานะ degraded อย่างชัดเจนแทนการ build/deploy ล้มเหลวหรือแสดงข้อมูลปลอม
+        </div>
+      </div>
+    );
+  }
 
   if (rows.length < page.qualityGate.minRows) {
     notFound();

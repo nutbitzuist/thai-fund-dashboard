@@ -57,6 +57,10 @@ async function triggerRecovery(): Promise<boolean> {
 }
 
 export async function GET(req: NextRequest) {
+  if (!process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 });
+  }
+
   const authHeader = req.headers.get('authorization');
   const secret =
     req.headers.get('x-cron-secret') ??
@@ -64,6 +68,15 @@ export async function GET(req: NextRequest) {
     req.nextUrl.searchParams.get('secret');
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Missing DATABASE_URL is a config problem, not an outage — report degraded
+  // without firing the Telegram alert or the db-recovery workflow.
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json(
+      { ok: false, severity: 'critical', error: 'DATABASE_URL is not set', misconfigured: true },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 
   const t0 = Date.now();

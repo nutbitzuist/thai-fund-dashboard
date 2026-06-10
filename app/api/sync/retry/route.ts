@@ -31,28 +31,28 @@ export async function POST(req: NextRequest) {
 
   // Check if the most recent NAV in the DB is already up to date.
   // "Up to date" = last weekday's data is present (handles weekends correctly).
-  const lastWeekday = getLastWeekday();
-  const lastWeekdayStr = lastWeekday.toISOString().split('T')[0];
-
-  const lastNav = await prisma.navPrice.findFirst({
-    orderBy: { navDate: 'desc' },
-    select: { navDate: true },
-  });
-
-  const lastNavStr = lastNav
-    ? new Date(lastNav.navDate).toISOString().split('T')[0]
-    : null;
-
-  if (lastNavStr && lastNavStr >= lastWeekdayStr) {
-    return NextResponse.json({
-      skipped: true,
-      reason: 'Primary sync already succeeded — data is current',
-      lastNavDate: lastNavStr,
-    });
-  }
-
-  // Data is behind — run the sync
   try {
+    const lastWeekday = getLastWeekday();
+    const lastWeekdayStr = lastWeekday.toISOString().split('T')[0];
+
+    const lastNav = await prisma.navPrice.findFirst({
+      orderBy: { navDate: 'desc' },
+      select: { navDate: true },
+    });
+
+    const lastNavStr = lastNav
+      ? new Date(lastNav.navDate).toISOString().split('T')[0]
+      : null;
+
+    if (lastNavStr && lastNavStr >= lastWeekdayStr) {
+      return NextResponse.json({
+        skipped: true,
+        reason: 'Primary sync already succeeded — data is current',
+        lastNavDate: lastNavStr,
+      });
+    }
+
+    // Data is behind — run the sync
     const result = await runDailySync();
     return NextResponse.json({
       success: true,

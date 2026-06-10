@@ -6,14 +6,22 @@ import { formatDateTh } from '@/lib/utils'
 // Cached: DB hit at most once per 30 minutes across all concurrent requests.
 const getNavFreshness = unstable_cache(
   async () => {
-    const record = await prisma.navPrice.findFirst({
-      orderBy: { navDate: 'desc' },
-      select: { navDate: true },
-    });
+    let record: { navDate: Date } | null;
+    try {
+      record = await prisma.navPrice.findFirst({
+        orderBy: { navDate: 'desc' },
+        select: { navDate: true },
+      });
+    } catch (error) {
+      if (error instanceof Error && /DATABASE_URL is not set/i.test(error.message)) {
+        return { date: null, daysSince: 999, degraded: true };
+      }
+      throw error;
+    }
     if (!record) return { date: null, daysSince: 999 };
     const date = new Date(record.navDate);
     const daysSince = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-    return { date: date.toISOString().split('T')[0], daysSince };
+    return { date: date.toISOString().split('T')[0], daysSince, degraded: false };
   },
   ['footer-nav-freshness'],
   { revalidate: 1800 }
@@ -30,7 +38,7 @@ function ChartMark({ className }: { className?: string }) {
 }
 
 export async function Footer() {
-  const { date: lastNavDate, daysSince } = await getNavFreshness();
+  const { date: lastNavDate, daysSince, degraded } = await getNavFreshness();
   const stale = daysSince > 3;
   return (
     <footer className="bg-slate-900">
@@ -49,7 +57,9 @@ export async function Footer() {
             </p>
             <p className={`mt-2 text-xs leading-relaxed ${stale ? 'text-amber-400' : 'text-slate-500'}`}>
               {stale && '⚠️ '}
-              {lastNavDate
+              {degraded
+                ? 'ยังไม่ได้เชื่อมต่อฐานข้อมูล NAV ใน environment นี้'
+                : lastNavDate
                 ? `ข้อมูล NAV ล่าสุด: ${formatDateTh(lastNavDate)}${stale ? ` (เก่ากว่า ${daysSince} วัน)` : ''}`
                 : 'กำลังตรวจสอบข้อมูล...'
               }

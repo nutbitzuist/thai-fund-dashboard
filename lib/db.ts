@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────
 
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 function cleanEnvValue(value?: string): string | undefined {
   if (!value) return value;
@@ -20,7 +21,6 @@ function makePrismaClient() {
   const connectionString = cleanEnvValue(process.env.DATABASE_URL);
   if (!connectionString) throw new Error('DATABASE_URL is not set');
 
-  const { PrismaPg } = require('@prisma/adapter-pg');
   const adapter = new PrismaPg({ connectionString });
   return new PrismaClient({ adapter });
 }

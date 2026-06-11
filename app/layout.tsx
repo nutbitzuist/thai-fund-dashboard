@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Noto_Sans_Thai, Inter } from 'next/font/google'
+import Script from 'next/script'
 import './globals.css'
 import { Navbar } from '@/components/layout/navbar'
 import { Footer } from '@/components/layout/footer'
@@ -55,6 +56,12 @@ export default function RootLayout({
         className="min-h-full flex flex-col bg-slate-50"
         style={{ fontFamily: 'var(--font-noto-sans-thai), var(--font-inter), sans-serif' }}
       >
+        <Script
+          src="https://datafa.st/js/script.js"
+          data-website-id="dfid_xo15nsyDCtmWTEco6dhqU"
+          data-domain="bulltiq.com"
+          strategy="afterInteractive"
+        />
         <Navbar />
         <LayoutClient>
           <main className="flex-1">{children}</main>

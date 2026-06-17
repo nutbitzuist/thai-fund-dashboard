@@ -57,7 +57,13 @@ async function main() {
 
   await prisma.$disconnect();
 
-  if (result.errors.length > 0) {
+  // Don't red the whole run on a partial. If we made real progress (NAVs or metrics),
+  // treat errors as a warning (the ⚠️ Telegram above already flags them) and let the
+  // dedicated `audit-data-health --fail-on-stale` workflow step be the authority on whether
+  // the data is actually too stale to pass. Only hard-fail when we errored AND got nowhere
+  // (e.g. a SEC 429 that inserted nothing) — a clean run with nothing-new stays green.
+  const madeProgress = result.navInserted > 0 || result.metricsCalculated > 0;
+  if (result.errors.length > 0 && !madeProgress) {
     process.exitCode = 1;
   }
 }

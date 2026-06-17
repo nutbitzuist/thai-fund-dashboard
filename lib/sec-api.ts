@@ -19,6 +19,8 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 const RATE_LIMIT_DELAY_MS = 300; // ms between requests to avoid 429
+const RATE_LIMIT_RETRY_ATTEMPTS = 5; // 429s are transient — retry more than other error types
+const MAX_BACKOFF_MS = 30_000; // cap on exponential backoff
 
 // ── Helper: Get API Key ──────────────────────
 
@@ -32,6 +34,17 @@ function getApiKey(type: 'factsheet' | 'nav'): string {
     throw new AppError('API_KEY_INVALID', 500, `Missing SEC API key for ${type}`);
   }
   return key;
+}
+
+// ── Helper: Parse a Retry-After header (seconds or HTTP-date) → ms ──
+
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null;
+  const secs = Number(header);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const when = Date.parse(header);
+  if (!Number.isNaN(when)) return Math.max(0, when - Date.now());
+  return null;
 }
 
 // ── Helper: Fetch with Retry and Timeout ─────
@@ -60,8 +73,13 @@ async function secFetch<T>(
     }
 
     if (res.status === 429) {
-      if (attempt <= RETRY_ATTEMPTS) {
-        await sleep(RETRY_DELAY_MS * attempt * 2);
+      if (attempt <= RATE_LIMIT_RETRY_ATTEMPTS) {
+        // Honor Retry-After when SEC sends it; otherwise exponential backoff with full
+        // jitter so concurrent retries spread out instead of re-bursting the API.
+        const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'));
+        const backoff = Math.min(RETRY_DELAY_MS * 2 ** attempt, MAX_BACKOFF_MS);
+        const waitMs = retryAfterMs ?? backoff * (0.5 + Math.random() * 0.5);
+        await sleep(waitMs);
         return secFetch<T>(url, apiKey, attempt + 1);
       }
       throw new AppError('SEC_RATE_LIMIT', 429);

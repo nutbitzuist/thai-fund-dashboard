@@ -35,7 +35,7 @@ model Fund {
   projAbbrName   String?  // SEC proj_abbr_name from Factsheet
   nameTh         String
   nameEn         String?
-  fundStatus     String?  // e.g. "RDY" = ready, "LIQ" = liquidated
+  fundStatus     String?  // SEC status: 'RG'/'SE' = active; 'LI' = liquidated, 'EX' = expired, 'CA' = cancelled
   uniqueId       String?  // AMC unique_id reference
   amcId          Int?
   fundType       String?  // e.g. "EQUITY", "FIXED_INCOME", "MIXED"

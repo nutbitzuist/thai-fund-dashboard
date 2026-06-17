@@ -12,15 +12,25 @@ async function main() {
   console.log('[metrics] Loading database client');
   const { default: prisma } = await import('@/lib/db');
   console.log('[metrics] Loading metric engine');
-  const { calculateAllMetrics } = await import('@/lib/sync');
+  const { calculateAllMetrics, getFundIdsNeedingMetrics } = await import('@/lib/sync');
   const startedAt = Date.now();
+  const full = process.argv.includes('--all');
 
   const activeFunds = await prisma.fund.count({
     where: { fundStatus: { in: ['RG', 'SE'] } },
   });
 
-  console.log(`[metrics] Recalculating metrics for ${activeFunds} active funds`);
-  const calculated = await calculateAllMetrics([]);
+  let calculated: number;
+  if (full) {
+    console.log(`[metrics] FULL recalc for all ${activeFunds} active funds (--all)`);
+    calculated = await calculateAllMetrics([]);
+  } else {
+    // Scoped (default): only recalc funds whose metrics are stale/missing — much faster
+    // than recomputing all ~2,300 active funds. Use --all for a full rebuild.
+    const ids = await getFundIdsNeedingMetrics();
+    console.log(`[metrics] Scoped recalc: ${ids.length} of ${activeFunds} active funds have stale/missing metrics`);
+    calculated = ids.length > 0 ? await calculateAllMetrics(ids) : 0;
+  }
 
   const pruned = Number(await prisma.$executeRaw`
     DELETE FROM fund_metric fm

@@ -9,9 +9,12 @@
 import { AppError } from './errors';
 import { sleep } from './utils';
 import type {
+  MetricPeriod,
   SecAmcResponse,
   SecFundFactsheet,
+  SecFundPerformance,
   SecNavItem,
+  SecPerformanceItem,
 } from '@/types';
 
 const SEC_BASE_URL = 'https://api.sec.or.th';
@@ -257,6 +260,72 @@ export async function* fetchNavBatch(
     yield { date, items };
     if (delayMs > 0) await sleep(delayMs);
   }
+}
+
+// ── Official Performance ─────────────────────
+
+// SEC reference_period → our FundMetric period codes. 10-year and inception are skipped.
+const PERFORMANCE_PERIOD_MAP: Record<string, MetricPeriod> = {
+  '3 months': '3M',
+  '6 months': '6M',
+  'year to date': 'YTD',
+  '1 year': '1Y',
+  '3 years': '3Y',
+  '5 years': '5Y',
+};
+
+// performance_type_desc markers (Thai). We only need the FUND figures (not benchmark/peer).
+const FUND_RETURN_DESC = 'ผลตอบแทนกองทุนรวม';      // fund return
+const FUND_VOLATILITY_DESC = 'ความผันผวนของกองทุนรวม'; // fund volatility
+
+function parsePerformanceVal(val: string | null | undefined): number | null {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (s === '' || s === '-' || s === 'N/A') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * GET /FundFactsheet/fund/{proj_id}/performance
+ * Returns SEC's OFFICIAL performance figures. We extract, for the 'main' class only,
+ * the fund return (ผลตอบแทนกองทุนรวม) and fund volatility (ความผันผวนของกองทุนรวม)
+ * per reference_period, mapped to our period codes (3M/6M/YTD/1Y/3Y/5Y). 10y/inception skipped.
+ * Returns null when SEC has no performance data for the fund (404 / empty array).
+ */
+export async function fetchFundPerformance(
+  projId: string
+): Promise<SecFundPerformance | null> {
+  const apiKey = getApiKey('factsheet');
+  const url = `${SEC_BASE_URL}/FundFactsheet/fund/${encodeURIComponent(projId)}/performance`;
+  const data = await secFetch<SecPerformanceItem[] | null>(url, apiKey);
+  if (!data || !Array.isArray(data) || data.length === 0) return null;
+
+  const returnByPeriod: Partial<Record<MetricPeriod, number>> = {};
+  const volatilityByPeriod: Partial<Record<MetricPeriod, number>> = {};
+  let asOfDate: string | null = null;
+
+  for (const row of data) {
+    // Only the 'main' share class. SEC uses 'main' for the primary class abbr.
+    if ((row.class_abbr_name ?? 'main') !== 'main') continue;
+
+    const periodCode = PERFORMANCE_PERIOD_MAP[(row.reference_period ?? '').trim()];
+    if (!periodCode) continue; // skips 10 years / inception date and anything unexpected
+
+    const desc = row.performance_type_desc ?? '';
+    const val = parsePerformanceVal(row.performance_val);
+    if (val === null) continue;
+
+    if (desc.includes(FUND_RETURN_DESC)) {
+      returnByPeriod[periodCode] = val;
+      if (!asOfDate && row.as_of_date) asOfDate = row.as_of_date;
+    } else if (desc.includes(FUND_VOLATILITY_DESC)) {
+      volatilityByPeriod[periodCode] = val;
+      if (!asOfDate && row.as_of_date) asOfDate = row.as_of_date;
+    }
+  }
+
+  return { asOfDate, returnByPeriod, volatilityByPeriod };
 }
 
 export { RATE_LIMIT_DELAY_MS };

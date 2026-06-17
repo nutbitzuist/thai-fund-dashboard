@@ -279,8 +279,21 @@ export async function syncAllNavs(
   let inserted = 0;
   const updatedFundIds: number[] = [];
 
+  // Catch-up throttle: when the lookback window is large (the DB fell behind), each fund needs
+  // many missing dates, so the default concurrency bursts SEC and trips its rate limit. Shrink
+  // the batch size and lengthen the inter-batch pause so a big catch-up degrades to "slow but
+  // reliable" instead of failing. Normal daily runs (small window) are unaffected.
+  const isCatchUp = recentDays > 10;
+  const batchSize = isCatchUp ? 4 : BATCH_SIZE;
+  const interBatchDelay = isCatchUp ? 5000 : INTER_BATCH_DELAY;
+  if (isCatchUp) {
+    console.warn(
+      `[sync] Catch-up mode (recentDays=${recentDays}): throttling to batchSize=${batchSize}, interBatchDelay=${interBatchDelay}ms`
+    );
+  }
+
   // Sync recent NAV for funds that already have data (fast path)
-  const existingBatches = chunkArray(fundsWithData, BATCH_SIZE);
+  const existingBatches = chunkArray(fundsWithData, batchSize);
   for (const batch of existingBatches) {
     const results = await Promise.all(
       batch.map((f) => syncNavForFund(f.id, f.projId, recentStart, endDate))
@@ -289,11 +302,11 @@ export async function syncAllNavs(
       inserted += count;
       if (count > 0) updatedFundIds.push(batch[i].id);
     });
-    await sleep(INTER_BATCH_DELAY);
+    await sleep(interBatchDelay);
   }
 
   // Bootstrap new funds with a short window
-  const newBatches = chunkArray(fundsWithoutData, BATCH_SIZE);
+  const newBatches = chunkArray(fundsWithoutData, batchSize);
   for (const batch of newBatches) {
     const results = await Promise.all(
       batch.map((f) => syncNavForFund(f.id, f.projId, newFundStart, endDate))
@@ -302,7 +315,7 @@ export async function syncAllNavs(
       inserted += count;
       if (count > 0) updatedFundIds.push(batch[i].id);
     });
-    await sleep(INTER_BATCH_DELAY);
+    await sleep(interBatchDelay);
   }
 
   return { inserted, updatedFundIds };
@@ -449,6 +462,29 @@ export async function calculateAllMetrics(fundIds?: number[]): Promise<number> {
   }
 
   return total;
+}
+
+/**
+ * Active funds whose metrics are stale or missing — the default class's latest NAV is newer
+ * than its latest computed metric (or it has none yet). Lets auto-repair recalc only what is
+ * actually broken instead of all ~2,300 active funds (the main driver of the ~1.8h runtime).
+ */
+export async function getFundIdsNeedingMetrics(): Promise<number[]> {
+  const rows = await prisma.$queryRaw<{ id: number }[]>`
+    SELECT f.id
+    FROM fund f
+    JOIN fund_class fc ON fc."fundId" = f.id AND fc."isDefault" = true
+    LEFT JOIN LATERAL (
+      SELECT max("navDate") AS d FROM nav_price WHERE "fundClassId" = fc.id
+    ) nav ON true
+    LEFT JOIN LATERAL (
+      SELECT max("endDate") AS d FROM fund_metric WHERE "fundClassId" = fc.id
+    ) met ON true
+    WHERE f."fundStatus" IN ('RG', 'SE')
+      AND nav.d IS NOT NULL
+      AND (met.d IS NULL OR nav.d > met.d)
+  `;
+  return rows.map((r) => r.id);
 }
 
 // ── Full Daily Sync ───────────────────────────

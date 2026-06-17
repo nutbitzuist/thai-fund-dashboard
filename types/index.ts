@@ -41,6 +41,24 @@ export interface SecNavResponse {
   items?: SecNavItem[];
 }
 
+// Raw row from GET /FundFactsheet/fund/{proj_id}/performance
+export interface SecPerformanceItem {
+  class_abbr_name?: string;
+  reference_period?: string;       // '3 months' | '6 months' | 'year to date' | '1 year' | '3 years' | '5 years' | '10 years' | 'inception date'
+  performance_type_desc?: string;  // 'ผลตอบแทนกองทุนรวม' (fund return) | 'ความผันผวนของกองทุนรวม' (fund vol) | ...
+  performance_val?: string | null;
+  as_of_date?: string | null;      // month-end, lagged ~7 weeks
+}
+
+// Parsed SEC official performance for one fund's 'main' class, keyed by our period codes.
+export interface SecFundPerformance {
+  asOfDate: string | null;
+  // SEC official fund return (%) per period code
+  returnByPeriod: Partial<Record<MetricPeriod, number>>;
+  // SEC official fund volatility (%) per period code
+  volatilityByPeriod: Partial<Record<MetricPeriod, number>>;
+}
+
 // ── Domain Types ────────────────────────────────
 
 export interface AmcDto {

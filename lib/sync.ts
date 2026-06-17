@@ -266,6 +266,16 @@ export async function syncAllNavs(
     }),
   ]);
 
+  // Active-fund guard (we expect ~2,300 active RG/SE funds with classes). If the active set
+  // collapses, SEC's fundStatus codes likely changed and our 'RG'/'SE' filter now matches
+  // almost nothing — fail loudly instead of silently syncing zero funds.
+  if (fundsWithData.length < 1000) {
+    throw new Error(
+      `Active-fund guard: only ${fundsWithData.length} active funds with classes (expected ~2,300). ` +
+      `SEC fundStatus codes may have changed — refusing to sync nothing.`
+    );
+  }
+
   let inserted = 0;
   const updatedFundIds: number[] = [];
 

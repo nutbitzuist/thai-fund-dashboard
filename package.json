@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "tsx tests/fund-health-score.test.ts && tsx tests/production-monitor.test.ts && tsx tests/bulltiq-content.test.ts && tsx tests/top-holdings.test.ts && tsx tests/performance-display.test.ts && tsx tests/reconciliation.test.ts",
+    "test": "tsx tests/fund-health-score.test.ts && tsx tests/production-monitor.test.ts && tsx tests/bulltiq-content.test.ts && tsx tests/top-holdings.test.ts && tsx tests/performance-display.test.ts && tsx tests/reconciliation.test.ts && tsx tests/total-return.test.ts",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

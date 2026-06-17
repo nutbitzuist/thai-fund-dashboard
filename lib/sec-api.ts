@@ -328,4 +328,35 @@ export async function fetchFundPerformance(
   return { asOfDate, returnByPeriod, volatilityByPeriod };
 }
 
+// ── Dividend Policy ──────────────────────────
+
+/**
+ * GET /FundFactsheet/fund/{proj_id}/dividend
+ * Returns the fund's distribution policy. Shape (observed 2026-06):
+ *   [{ class_abbr_name, dividend_policy: "Y"|"N", dividend_policy_remark,
+ *      last_upd_date, dividend_details: [] }]
+ * NOTE: `dividend_details` is EMPTY for the funds we checked — SEC does not
+ * expose per-payment distribution amounts/dates here, so we can only learn
+ * WHETHER a fund distributes, not how much. We use this flag to decide which
+ * funds need SEC's official total return instead of our NAV price return.
+ *
+ * Returns:
+ *   true  — fund distributes (any row has dividend_policy === 'Y')
+ *   false — fund accumulates (rows present, none 'Y')
+ *   null  — SEC has no dividend record (404 / empty) → treat as unknown
+ */
+export async function fetchDividendPolicy(projId: string): Promise<boolean | null> {
+  const apiKey = getApiKey('factsheet');
+  const url = `${SEC_BASE_URL}/FundFactsheet/fund/${encodeURIComponent(projId)}/dividend`;
+  const data = await secFetch<unknown[] | null>(url, apiKey);
+  if (!data || !Array.isArray(data) || data.length === 0) return null;
+
+  for (const raw of data) {
+    const r = raw as Record<string, unknown>;
+    const policy = String(r.dividend_policy ?? r.dividendPolicy ?? '').trim().toUpperCase();
+    if (policy === 'Y') return true;
+  }
+  return false;
+}
+
 export { RATE_LIMIT_DELAY_MS };

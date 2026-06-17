@@ -7,6 +7,7 @@
 import prisma from './db';
 import { fetchAmcList, fetchFundsByAmc, fetchNavBatch } from './sec-api';
 import { calcMetrics, NavDataPoint } from './calculations';
+import { resolveDisplayReturn } from './total-return';
 import {
   formatDateISO,
   generateWeekdays,
@@ -381,6 +382,17 @@ export async function backfillNavHistory(
 // ── Calculate Metrics ─────────────────────────
 
 export async function calculateMetricsForFund(fundId: number): Promise<number> {
+  const fundRow = await prisma.fund.findUnique({
+    where: { id: fundId },
+    select: { dividendPolicy: true },
+  });
+  // Distributing funds (dividend_policy === 'Y') pay out cash, so a NAV PRICE
+  // return understates performance. For these we display SEC's official TOTAL
+  // return (stored as secReturnPct by backfill-sec-performance) when available.
+  // Accumulating funds are untouched — their price return already = total return.
+  const isDividendFund =
+    String(fundRow?.dividendPolicy ?? '').trim().toUpperCase() === 'Y';
+
   const defaultClass = await prisma.fundClass.findFirst({
     where: { fundId, isDefault: true },
   });
@@ -399,6 +411,23 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
     nav: Number(r.lastVal),
   }));
 
+  // For dividend funds, pull the latest SEC total return per period so we can
+  // substitute it for the NAV price return. One query, only when needed.
+  const secTotalByPeriod = new Map<string, number>();
+  if (isDividendFund) {
+    const secRows = await prisma.fundMetric.findMany({
+      where: { fundClassId: defaultClass.id, secReturnPct: { not: null } },
+      orderBy: { endDate: 'desc' },
+      select: { period: true, secReturnPct: true },
+    });
+    for (const r of secRows) {
+      // findMany returns endDate-desc; keep the first (latest) per period.
+      if (!secTotalByPeriod.has(r.period) && r.secReturnPct != null) {
+        secTotalByPeriod.set(r.period, Number(r.secReturnPct));
+      }
+    }
+  }
+
   const endDate = navPoints[navPoints.length - 1].date;
   let calculated = 0;
 
@@ -408,6 +437,13 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
 
     if (result.navCount < 2) continue;
 
+    // Total-return override for distributing funds (see lib/total-return.ts).
+    const { returnPct: displayReturnPct } = resolveDisplayReturn({
+      pricePct: result.returnPct,
+      secTotalReturnPct: secTotalByPeriod.get(period) ?? null,
+      isDividendFund,
+    });
+
     // Use raw SQL for deterministic upserts and adapter compatibility
     await prisma.$executeRaw`
       INSERT INTO fund_metric ("fundId", "fundClassId", period, "startDate", "endDate",
@@ -416,7 +452,7 @@ export async function calculateMetricsForFund(fundId: number): Promise<number> {
       VALUES (
         ${fundId}, ${defaultClass.id}, ${period},
         ${result.startDate}, ${result.endDate},
-        ${result.returnPct}, ${result.annualizedVolatilityPct},
+        ${displayReturnPct}, ${result.annualizedVolatilityPct},
         ${result.maxDrawdownPct}, ${result.sharpeRatio},
         ${result.navCount}, NOW()
       )

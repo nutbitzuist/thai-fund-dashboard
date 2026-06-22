@@ -5,7 +5,8 @@
 // Point any free monitor (UptimeRobot, BetterUptime, etc.) at this URL
 // and alert on non-200 to know when the daily sync has broken.
 //
-// Stale threshold: 4 calendar days (covers Fri → Tue with a missed Monday).
+// Stale threshold: 3 business days (avoids false red on weekends while still
+// failing if weekday NAV ingestion is genuinely stuck).
 
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
@@ -13,7 +14,26 @@ import prisma from '@/lib/db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const STALE_THRESHOLD_DAYS = 4;
+const STALE_THRESHOLD_BUSINESS_DAYS = 3;
+
+function toDateOnly(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function businessDaysSince(lastDate: Date | null, now = new Date()): number {
+  if (!lastDate) return 999;
+  const cursor = toDateOnly(lastDate);
+  const end = toDateOnly(now);
+  let days = 0;
+
+  while (cursor < end) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const weekday = cursor.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) days += 1;
+  }
+
+  return days;
+}
 
 export async function GET() {
   try {
@@ -36,14 +56,16 @@ export async function GET() {
     const daysSinceNav = lastNavDate
       ? Math.floor((now.getTime() - lastNavDate.getTime()) / 86400000)
       : 999;
+    const businessDaysSinceNav = businessDaysSince(lastNavDate, now);
 
-    const healthy = daysSinceNav <= STALE_THRESHOLD_DAYS;
+    const healthy = businessDaysSinceNav <= STALE_THRESHOLD_BUSINESS_DAYS;
 
     const body = {
       healthy,
       status: healthy ? 'ok' : 'stale',
       lastNavDate: lastNavDate?.toISOString().split('T')[0] ?? null,
       daysSinceLastNav: daysSinceNav,
+      businessDaysSinceLastNav: businessDaysSinceNav,
       activeFunds: fundCount,
       totalNavRecords: navCount,
       lastSync: lastSync

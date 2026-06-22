@@ -12,6 +12,25 @@ function hasFlag(flag: string) {
   return process.argv.includes(flag);
 }
 
+function toDateOnly(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function businessDaysSince(lastDate: Date | null, now = new Date()): number {
+  if (!lastDate) return 999;
+  const cursor = toDateOnly(lastDate);
+  const end = toDateOnly(now);
+  let days = 0;
+
+  while (cursor < end) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const weekday = cursor.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) days += 1;
+  }
+
+  return days;
+}
+
 async function main() {
   const { default: prisma } = await import('@/lib/db');
   const [counts] = await prisma.$queryRaw<Array<{
@@ -99,10 +118,12 @@ async function main() {
   const daysSinceLastNav = latestNavDate
     ? Math.floor((Date.now() - latestNavDate.getTime()) / 86_400_000)
     : 999;
+  const businessDaysSinceLastNav = businessDaysSince(latestNavDate);
 
   const report = {
-    healthy: daysSinceLastNav <= 4,
+    healthy: businessDaysSinceLastNav <= 3,
     daysSinceLastNav,
+    businessDaysSinceLastNav,
     counts,
     navGlobal,
     defaultCoverage,
